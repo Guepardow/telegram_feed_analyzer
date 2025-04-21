@@ -1,3 +1,5 @@
+import os
+import requests
 import re
 import json
 import folium
@@ -5,10 +7,28 @@ import numpy as np
 import gradio as gr
 import pandas as pd
 from datetime import datetime, timedelta
+from loguru import logger
 
 
 # Read the JSON file
-with open("../dataoff/data_telegram_250331.json", 'r', encoding='utf-8') as file:
+if not os.path.exists("./data/data_telegram_250331.json"):
+    # URL of the file to download
+    url = 'https://mehdimiah.com/blog/telegram_feed_analyzer/data/data_telegram_250331.json'
+
+    # Specify the target directory and file path
+    file_path = "./data/data_telegram_250331.json"
+
+    # Ensure the target directory exists
+    os.makedirs('./data', exist_ok=True)
+
+    # Send a GET request to the URL and write the content to the specified file path
+    with open(file_path, 'wb') as file:
+        file.write(requests.get(url).content)
+
+    logger.success(f'File downloaded and saved to {file_path}')
+
+
+with open("./data/data_telegram_250331.json", 'r', encoding='utf-8') as file:
     messages = json.load(file)
 #messages = messages[:20]  # Limit to 100 messages for performance
 
