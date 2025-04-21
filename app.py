@@ -1,12 +1,10 @@
 import os
 import requests
-import re
 import json
 import folium
 import numpy as np
 import gradio as gr
 import pandas as pd
-from datetime import datetime, timedelta
 from loguru import logger
 
 
@@ -94,7 +92,7 @@ def generate_message_feed(language):
 
         # Add icons for photo and video
         if message['has_photo']:
-            feed += f"""
+            feed += """
                     <div class="icon-container" style="display: inline-flex; align-items: center;">
                         <img src='https://mehdimiah.com/blog/telegram_feed_analyzer/icon/photo_r.png' width='16' 
                             style='margin-right: 5px;'
@@ -102,7 +100,7 @@ def generate_message_feed(language):
                     </div>
                     """
         if message['has_video']:
-            feed += f"""
+            feed += """
                     <div class="icon-container" style="display: inline-flex; align-items: center;">
                         <img src='https://mehdimiah.com/blog/telegram_feed_analyzer/icon/film_r.png' width='16' 
                             style='margin-right: 5px;'
@@ -113,7 +111,7 @@ def generate_message_feed(language):
         feed += "</div>"  # end of the icons line on the left
         
          # Add icon for similarity search
-        feed += f"""
+        feed += """
                 <div class="icon-container" style="display: inline-flex; align-items: right;">
                     <img src='https://mehdimiah.com/blog/telegram_feed_analyzer/icon/similar_r.png' width='16' 
                         style='margin-left: 5px; cursor: pointer;
@@ -144,24 +142,24 @@ def generate_map(location_markers, urls, texts):
 
 
 # JavaScript function to handle zoom
-js_code = """
-function zoomToCoordinates(lat, lon) {
-    var map = window.map;
-    if (map) {
-        map.setView([lat, lon], 5);
-    }
-}
+# js_code = """
+# function zoomToCoordinates(lat, lon) {
+#     var map = window.map;
+#     if (map) {
+#         map.setView([lat, lon], 5);
+#     }
+# }
 
-document.addEventListener('DOMContentLoaded', function() {
-    var mapElement = document.querySelector('.folium-map');
-    if (mapElement) {
-        window.map = L.map(mapElement.id).setView([35.0, 38.0], 7);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        }).addTo(window.map);
-    }
-});
-"""
+# document.addEventListener('DOMContentLoaded', function() {
+#     var mapElement = document.querySelector('.folium-map');
+#     if (mapElement) {
+#         window.map = L.map(mapElement.id).setView([35.0, 38.0], 7);
+#         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+#             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+#         }).addTo(window.map);
+#     }
+# });
+# """
 
 # Function to generate bar chart
 def generate_chart(interval):
@@ -196,7 +194,7 @@ with gr.Blocks(theme=gr.themes.Ocean()) as demo:
         with gr.Column(scale=1):
             language = gr.Dropdown(choices=['English', 'No translation'], label="Select Translation Option", interactive=True)
 
-            gr.Markdown(f"## Message Feed")
+            gr.Markdown("## Message Feed")
             message_feed, location_markers, urls, texts = generate_message_feed(language.value)
             feed = gr.HTML(message_feed, max_height=730)
             language.change(fn=lambda language: generate_message_feed(language)[0],  # Only update the message_feed part
@@ -220,11 +218,11 @@ with gr.Blocks(theme=gr.themes.Ocean()) as demo:
             map_component = gr.HTML(generate_map(location_markers, urls, texts), max_height=550, padding=False, container=True)
 
             # JavaScript component to include the zoom function
-            js_component = gr.HTML(f"""
-            <script>
-            {js_code}
-            </script>
-            """)
+            # js_component = gr.HTML(f"""
+            # <script>
+            # {js_code}
+            # </script>
+            # """)
 
             # Chart
             interval=gr.Radio(["5min", "30min", "4h", "24h"], label="Select Time Interval", value="4h", interactive=True)
