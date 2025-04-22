@@ -1,6 +1,10 @@
-api_keys:
-  google: ""
-  telethon: ""
+secret_keys:
+  google:
+    api_key: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  telethon:
+    api_id: 123465789
+    api_hash: "00000000000000000000000000000000"
+    phone: "+1 (000) 000-0000"
 
 telegram_channels:
   - "abualiexpress"

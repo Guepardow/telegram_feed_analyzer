@@ -10,15 +10,18 @@
     <img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/kaggle.png" alt="Kaggle" width="20px" style="vertical-align: middle;margin-left:40px">
     <a href="https://www.kaggle.com/code/guepardow/telegram-feed-analyzer">Kaggle Notebook</a>
     <img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/blog.png" alt="Blog" width="20px" style="vertical-align: middle;margin-left:40px">
-    <a href="https://www.kaggle.com/code/guepardow/telegram-feed-analyzer">Blog post</a>
+    <a href="https://mehdimiah.com/blog/telegram_feed_analyzer">Blog post</a>
 </p>
 
 This project enhances Telegram feeds, using the Gemini AI API, by adding the following capabilities:
-- 🗺️ translation to English;
-- 📍 geolocation;
-- 😳 sentiment analysis;
-- ✉️ similar message search;
+- 🗺️ translation to English
+- 📍 geolocation
+- 😳 sentiment analysis
+- ✉️ similar message search
 - ❓ retrieval-augmented generation (RAG)
+
+📆 **News**:
+- *20-04-2024: this project was developed for the Kaggle competition [5-day Gen AI Intensive Course with Google in April 2025](https://www.kaggle.com/competitions/gen-ai-intensive-course-capstone-2025q1).*
 
 # Installation
 
@@ -30,7 +33,7 @@ cd telegram_feed_analyzer
 uv sync
 ```
 
-You can ket a GOOGLE API KEY [here](https://aistudio.google.com/app/apikey).
+You can get a GOOGLE API KEY [here](https://aistudio.google.com/app/apikey).
 
 # Gradio Dashboard
 
@@ -58,19 +61,19 @@ uv run src/baselines/analysis.py https:t.me/<account_name>/<message_id>
 
 With Gemini 2.0 Flash:
 ```bash
-uv run similar.py --post https:t.me/<account_name>/<message_id> --database data/telegram.json
+uv run similar.py --post https:t.me/<account_name>/<message_id> --db data/telegram.json
 ```
 
 With a baseline method (less efficient but does not require any GOOGLE_API_KEY):
 ```bash
-uv run src/baselines/similar.py --post https:t.me/<account_name>/<message_id> --database data/telegram.json
+uv run src/baselines/similar.py --post https:t.me/<account_name>/<message_id> --db data/telegram.json
 ```
 
 ## Retrieval-Augmented Generation (RAG)
 
 With Gemini 2.0 Flash:
 ```bash
-uv run rag.py --query "To be or not to be?" --database data/telegram.json
+uv run rag.py --query "To be or not to be?" --db data/telegram.json
 ```
 
 
