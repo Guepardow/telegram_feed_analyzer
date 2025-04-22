@@ -6,20 +6,43 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "chromadb==0.6.3",
+    "click>=8.1.8",
     "folium>=0.19.5",
     "geopy>=2.4.1",
+    "google-api-core>=2.24.2",
     "google-genai==1.7.0",
+    "googletrans>=4.0.2",
     "gradio>=5.25.2",
+    "langid>=1.1.6",
     "loguru>=0.7.3",
     "matplotlib>=3.10.1",
     "numpy>=2.2.5",
     "pandas>=2.2.3",
+    "sacremoses>=0.1.1",
     "scikit-learn>=1.6.1",
     "seaborn>=0.13.2",
+    "sentencepiece>=0.2.0",
+    "telethon>=1.40.0",
+    "torch>=2.6.0",
+    "torchvision>=0.21.0",
     "tqdm>=4.67.1",
+    "transformers>=4.51.3",
 ]
 
 [dependency-groups]
 dev = [
     "ipykernel>=6.29.5",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu124", marker = "sys_platform == 'linux' or sys_platform == 'win32'"},
+]
+torchvision = [
+  { index = "pytorch-cu124", marker = "sys_platform == 'linux' or sys_platform == 'win32'"},
 ]

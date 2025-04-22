@@ -11,3 +11,6 @@ wheels/
 
 # Data
 *.json
+
+# API keys and custom config
+config.yaml
