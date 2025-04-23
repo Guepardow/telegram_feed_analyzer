@@ -21,7 +21,7 @@ This project enhances Telegram feeds, using the Gemini AI API, by adding the fol
 - ❓ retrieval-augmented generation (RAG)
 
 📆 **News**:
-- *20-04-2024: this project was developed for the Kaggle competition [5-day Gen AI Intensive Course with Google in April 2025](https://www.kaggle.com/competitions/gen-ai-intensive-course-capstone-2025q1).*
+- *20-04-2024: this project was developed for the Kaggle competition [5-day Gen AI Intensive Course with Google](https://www.kaggle.com/competitions/gen-ai-intensive-course-capstone-2025q1).*
 
 # Installation
 
@@ -35,11 +35,29 @@ uv sync
 
 You can get a GOOGLE API KEY [here](https://aistudio.google.com/app/apikey).
 
-# Gradio Dashboard
+# Data
 
-You can run a local gradio dashboard by running:
+You can download 1987 "enhanced messages" posted on Telegram on March 31st, 2025 about the situation in Israel and Palestine:
 
 ```sh
+wget -q https://mehdimiah.com/blog/telegram_feed_analyzer/data/data_telegram_250331.json -O ./data/telegram_250331.json
+```
+
+# Gradio Dashboard
+
+First, create a Persistent Chroma database for the RAG system (the database with embeddings will be stored in `./data/.chromadb/rag_db`):
+```sh
+cd src/gemini
+uv run build_rag_db.py
+```
+
+You can then run a local gradio dashboard by running:
+
+```sh
+# terminal 1 to run the database server as a HttpClient: 
+uv run chroma run --path ./data/.chromadb/rag_db
+
+# terminal 2 to run the gradio dashboard : 
 uv run gradio app.py
 ```
 
@@ -61,19 +79,19 @@ uv run src/baselines/analysis.py https:t.me/<account_name>/<message_id>
 
 With Gemini 2.0 Flash:
 ```bash
-uv run similar.py --post https:t.me/<account_name>/<message_id> --db data/telegram.json
+uv run similar.py --post https:t.me/<account_name>/<message_id> --db ./.chroma
 ```
 
 With a baseline method (less efficient but does not require any GOOGLE_API_KEY):
 ```bash
-uv run src/baselines/similar.py --post https:t.me/<account_name>/<message_id> --db data/telegram.json
+uv run src/baselines/similar.py --post https:t.me/<account_name>/<message_id> --db ./.chroma
 ```
 
 ## Retrieval-Augmented Generation (RAG)
 
 With Gemini 2.0 Flash:
 ```bash
-uv run rag.py --query "To be or not to be?" --db data/telegram.json
+uv run rag.py --query "To be or not to be?" --db ./.chroma
 ```
 
 

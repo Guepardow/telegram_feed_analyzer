@@ -1,11 +1,17 @@
 import os
-import requests
+import yaml
 import json
 import folium
+import chromadb
+import requests
 import numpy as np
 import gradio as gr
 import pandas as pd
 from loguru import logger
+from google import genai
+from google.genai import types
+
+from src.gemini.build_rag_db import GeminiEmbeddingFunction
 
 
 # Read the JSON file
@@ -26,9 +32,9 @@ if not os.path.exists("./data/data_telegram_250331.json"):
     logger.success(f'File downloaded and saved to {file_path}')
 
 
+# Load the JSON data with enhanced Telegram messages
 with open("./data/data_telegram_250331.json", 'r', encoding='utf-8') as file:
     messages = json.load(file)
-#messages = messages[:20]  # Limit to 100 messages for performance
 
 
 # Function to convert sentiment score to a color using RdYlGn colormap
@@ -126,6 +132,62 @@ def generate_message_feed(language):
     return feed, location_markers, urls, texts
 
 
+# Initalize the Google GenAI client
+GOOGLE_API_KEY = yaml.safe_load(open("config.yaml"))['secret_keys']['google']['api_key']
+genai_client = genai.Client(api_key=GOOGLE_API_KEY)
+
+# Import the embedding function
+embed_function = GeminiEmbeddingFunction(genai_client=genai_client, document_mode=False)
+
+# Initialize the HttpClient to connect to the Chroma server
+chroma_client = chromadb.HttpClient(host='localhost', port=8000)
+database = chroma_client.get_collection(name="telegram", embedding_function=embed_function)
+
+# Function to answer the question using the database (RAG)
+def question_to_database(query):
+    """
+    Question-answering function using Gemini
+    :param query: the question of the user.
+    :param database: the Chroma database with the embeddings of documents.
+    :param embed_function: the function used to embed the query
+    """
+    query_str = query.value if isinstance(query, gr.Textbox) else query
+
+    result = database.query(query_texts=[query_str], n_results=20)  # Here 20 documents is 1% of the total database
+    [all_passages] = result["documents"]
+
+    query_oneline = query_str.replace("\n", " ")
+    
+    # Prompt to answer the question   
+    prompt = f"""You are a knowledgeable and professional journalism bot specializing in fact-checking and international humanitarian law.
+    You answer questions using text from the reference passage included below. Be sure to respond in complete sentences, providing comprehensive and well-researched information.
+    Adopt a journalistic tone.
+    
+    Since the data come from Telegram, be cautious, as it is from a social network and the information can be inaccurate.
+    Each passage corresponds to a Telegram post: the content, the account and the date of the post are mentioned in each passage. 
+    Keep in mind that several hours may pass between an event and the publication of a message related to it. 
+    
+    If the passage is irrelevant to the answer, you may ignore it.
+    
+    QUESTION: {query_oneline}
+
+    """
+    
+    # Add the retrieved documents to the prompt.
+    for passage in all_passages:
+        passage_oneline = passage.replace("\n", " ")
+        prompt += f"PASSAGE: {passage_oneline}\n"
+
+    # Answer with Gemini with low creativity
+    answer = genai_client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=prompt, 
+        config=types.GenerateContentConfig(temperature=0.1)
+    )
+
+    return answer.text
+
+
 # Function to generate map
 def generate_map(location_markers, urls, texts):
     m = folium.Map(location=[35.0, 38.0], tiles="Cartodb Dark Matter", zoom_start=7, height='100%', width='100%', padding=0)
@@ -204,12 +266,11 @@ with gr.Blocks(theme=gr.themes.Ocean()) as demo:
 
         with gr.Column(scale=1):
 
-            gr.Textbox("", interactive=True, label="Input Text", placeholder="Enter your text here...")
+            query = gr.Textbox("", interactive=True, label="Input Text", placeholder="Enter your question here...")
             #gr.Checkbox(label="Use Google Search", value=False, interactive=True) 
             submit_button = gr.Button("Run")
 
-            response_ai = """On March 31, 2025, several Telegram accounts reported bombings and shelling in and around Rafah. Here's a summary of the events as they unfolded, according to the posts:\n\n*   **Early Morning (00:49 - 02:24):** Reports indicate building demolition and artillery shelling west of Rafah (hamza20300). An explosion was reported in the Tel Sultan neighborhood of Rafah (hpress at 02:20), followed shortly by reports of a residential square being blown up in Al-Sultan neighborhood, west of Rafah (hamza20300 at 02:24).\n\n*   **Daytime (12:28 - 17:16):** There are reports of displacement of Rafah residents (Nuseirat1 at 12:28, hamza20300 at 15:45). Leaflets with evacuation orders were dropped by aircraft over Rafah (hamza20300 at 12:33). Later in the afternoon, a young man was reportedly killed, and his brother injured, in a targeted attack on their vehicle while they were working in transportation from Rafah (hamza20300 at 17:16, mohnadQ at 17:15).\n\n*   **Evening (19:33 - 21:00):** Reports of artillery shelling and heavy explosions north of Rafah (ramreports at 19:46, mohnadQ at 19:33, QudsN at 19:34). Shelling was described as intense and continuous in the northeastern areas of Rafah (hamza20300 at 19:52). Explosions were heard between Khan Yunis and Rafah (Nuseirat1 at 19:36). Illumination bombs were dropped east of Rafah (mohnadQ at 20:50, hamza20300 at 21:00).\n\n*   **Late Night (23:45 - 23:47):** Bombing operations were reported in the western areas of Rafah (ramreports at 23:45). Residential buildings in the Tel Sultan neighborhood were reportedly blown up (hamza20300 at 23:47).\n
-            """
+            response_ai = question_to_database(query) if query.value else ""
             response = gr.HTML(gr.Markdown(response_ai, max_height=750))
 
         with gr.Column(scale=2):
@@ -233,7 +294,10 @@ with gr.Blocks(theme=gr.themes.Ocean()) as demo:
 
 
     # reset_button.click(lambda: ("English", datetime(2024, 11, 20).timestamp()), None, [language, date_slider])
-
+    submit_button.click(question_to_database, inputs=query, outputs=response)
 
 if __name__ == "__main__":
     demo.launch()
+
+# terminal 1 to run the database server : uv run chroma run --path ./data/.chromadb/rag_db
+# terminal 2 to run the gradio dashboard : uv run gradio app.py
