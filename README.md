@@ -25,6 +25,7 @@ This project enhances Telegram feeds, using the Gemini AI API, by adding the fol
 
 # Installation
 
+## Setup
 This project uses `uv` as a project manager; you can [download it here](https://docs.astral.sh/uv/).
 
 ```sh
@@ -33,7 +34,9 @@ cd telegram_feed_analyzer
 uv sync
 ```
 
-You can get a GOOGLE API KEY [here](https://aistudio.google.com/app/apikey).
+## Authentification
+
+You can get a [Google API key here](https://aistudio.google.com/app/apikey). Then, update the file `config.yaml` with this key.
 
 # Data
 
@@ -55,7 +58,7 @@ You can then run a local gradio dashboard by running:
 
 ```sh
 # terminal 1 to run the database server as a HttpClient: 
-uv run chroma run --path ./data/.chromadb/rag_db
+uv run chroma run --path ./data/.chromadb/rag_db --host localhost --port 8000
 
 # terminal 2 to run the gradio dashboard : 
 uv run gradio app.py
@@ -67,24 +70,24 @@ uv run gradio app.py
 
 With Gemini 2.0 Flash:
 ```bash
-uv run analysis.py https:t.me/<account_name>/<message_id>
+uv run analysis.py https://t.me/<account_name>/<message_id>
 ```
 
 With a baseline method (less efficient but does not require any GOOGLE_API_KEY):
 ```bash
-uv run src/baselines/analysis.py https:t.me/<account_name>/<message_id>
+uv run src/baselines/analysis.py https://t.me/<account_name>/<message_id>
 ```
 
 ## Similar message search
 
 With Gemini 2.0 Flash:
 ```bash
-uv run similar.py --post https:t.me/<account_name>/<message_id> --db ./.chroma
+uv run similar.py --post https://t.me/<account_name>/<message_id> --db ./.chroma
 ```
 
 With a baseline method (less efficient but does not require any GOOGLE_API_KEY):
 ```bash
-uv run src/baselines/similar.py --post https:t.me/<account_name>/<message_id> --db ./.chroma
+uv run src/baselines/similar.py --post https://t.me/<account_name>/<message_id> --db ./.chroma
 ```
 
 ## Retrieval-Augmented Generation (RAG)

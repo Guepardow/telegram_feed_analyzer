@@ -7,6 +7,9 @@ requires-python = ">=3.10"
 dependencies = [
     "chromadb==0.6.3",
     "click>=8.1.8",
+    "dash>=3.0.3",
+    "dash-bootstrap-components>=2.0.2",
+    "dash-extensions>=1.0.20",
     "folium>=0.19.5",
     "geopy>=2.4.1",
     "google-api-core>=2.24.2",
