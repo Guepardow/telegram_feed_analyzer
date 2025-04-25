@@ -48,7 +48,7 @@ class SimilaritySearch:
         # Initialize a persistent Chroma client
         self.chroma_client = chromadb.PersistentClient(path=persist_directory)
         self.collection = self.chroma_client.create_collection(
-            name='bert',
+            name='bert_db',
             embedding_function=self.embedding_function,
             metadata={"hnsw:space": "cosine"}
         )    
@@ -57,7 +57,7 @@ class SimilaritySearch:
         # Initialize a Chroma client
         self.chroma_client = chromadb.HttpClient(host=host, port=port)
         self.collection = self.chroma_client.get_collection(
-            name="bert", 
+            name="bert_db", 
             embedding_function=self.embedding_function
             )
         

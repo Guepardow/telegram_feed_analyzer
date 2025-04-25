@@ -48,7 +48,7 @@ class RAG:
         # Initialize a persistent Chroma client using the embedding function for documents
         self.chroma_client = chromadb.PersistentClient(path=persist_directory)
         self.collection = self.chroma_client.create_collection(
-            name='rag',
+            name='rag_db',
             embedding_function=self.embedding_function_docus,
             metadata={"hnsw:space": "cosine"}
         )
@@ -57,7 +57,7 @@ class RAG:
         # Initialize a Chroma client using the embedding function for queries
         self.chroma_client = chromadb.HttpClient(host=host, port=port)
         self.collection = self.chroma_client.get_collection(
-            name="rag", 
+            name="rag_db", 
             embedding_function=self.embedding_function_query)
 
     def add_documents(self, documents):
@@ -127,7 +127,7 @@ def answer(query: str, n_results: int):
 
     # Initialize the RAG system
     rag = RAG(GOOGLE_API_KEY=GOOGLE_API_KEY)
-    rag.load_collection(host='localhost', port=8000)
+    rag.load_collection(host='localhost', port=8001)
 
     # Query the system
     answer = rag.query(query=query, n_results=n_results)

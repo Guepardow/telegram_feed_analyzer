@@ -17,18 +17,18 @@ from src.similarity_search import SimilaritySearch
 
 # Load data
 with open("./data/data_telegram_250331.json", 'r', encoding='utf-8') as f:
-    messages = json.load(f)[:200]
+    messages = json.load(f)
 
 # Load config and initialize the RAG system and the SimilaritySearch system
 with open("./config.yaml") as f:
     config = yaml.safe_load(f)
     GOOGLE_API_KEY = config['secret_keys']['google']['api_key']
 
-rag = RAG(GOOGLE_API_KEY=GOOGLE_API_KEY)
-rag.load_collection(host='localhost', port=8001)
-
 similarity_search = SimilaritySearch(GOOGLE_API_KEY=GOOGLE_API_KEY)
 similarity_search.load_collection(host='localhost', port=8000)
+
+rag = RAG(GOOGLE_API_KEY=GOOGLE_API_KEY)
+rag.load_collection(host='localhost', port=8001)
 
 # Utility functions
 def sentiment_to_color(neg, neu, pos):
@@ -37,12 +37,17 @@ def sentiment_to_color(neg, neu, pos):
     return f"rgba({int(neg*255)}, {int(pos*255)}, 0, 1.0)"
             
 # Function to generate message feed
-def generate_feed(language, account_name=None):
+def generate_feed(language, account_name=None, similarity_order=None):
 
     cards = []
-    is_using_a_filter = account_name is not None
+    is_using_a_filter = (account_name is not None) or (similarity_order is not None)
 
-    filtered_messages = messages if not is_using_a_filter else [msg for msg in messages if msg['account'] == account_name]
+    # Filter messages based on the account name if provided
+    filtered_messages = messages if (account_name is None) else [msg for msg in messages if msg['account'] == account_name]
+
+    # If similarity_order is provided, sort the messages based on that order
+    if similarity_order:
+        filtered_messages = [filtered_messages[i] for i in similarity_order]
 
     user_icon_style = {"marginRight": "5px", "cursor": "not-allowed", "opacity": "0.5"} if is_using_a_filter else {"marginRight": "5px", "cursor": "pointer"}
     similar_icon_style = {"marginLeft": "auto", "cursor": "not-allowed", "opacity": "0.5", "display": "flex","alignItems": "center"} if is_using_a_filter else {"display": "flex", "alignItems": "center", "marginLeft": "auto", "cursor": "pointer"}
@@ -52,6 +57,7 @@ def generate_feed(language, account_name=None):
         url = f"https://t.me/{message['account']}/{message['id']}"
         border_color = sentiment_to_color(float(message['negative_genai']), float(message['neutral_genai']), float(message['positive_genai']))
         content = message['text_english_genai'] if language == 'English' else message['text']
+        background_color = "#555555" if i == 0 and similarity_order else "#353535"
 
         cards.append(html.Div([
             html.Div([
@@ -82,10 +88,10 @@ def generate_feed(language, account_name=None):
                         html.Img(src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/film_r.png", height=16) if message['has_video'] else None
                         ], style={"display": "flex", "alignItems": "center"}),
                     html.Div([
-                        html.Img(src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/similar_r.png", height=16)
+                        html.Img(src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/similar_r.png", height=16, id={"type": "similar-icon", "index": i})
                     ], style=similar_icon_style)
                 ], style={"display": "flex", "gap": "5px"})
-            ], style={"backgroundColor": "#353535", "borderLeft": f"5px solid {border_color}", "padding": 15, "marginBottom": 10, "marginRight": 10, "borderRadius": 5, "color": "white"})
+            ], style={"backgroundColor": background_color, "borderLeft": f"5px solid {border_color}", "padding": 15, "marginBottom": 10, "marginRight": 10, "borderRadius": 5, "color": "white"})
         ]))
 
     return cards
@@ -187,7 +193,7 @@ app.layout = dbc.Container([
                 dcc.Dropdown(options=["English", "No translation"], value="English", id="language", clearable=False, style={"width": "65%"})
             ]),
             html.Div(id="message-feed", children=generate_feed("English"), style={"maxHeight": "730px", "overflowY": "scroll", "marginTop": 20}),
-            dcc.Store(id="filter-state", data={"account_name": None}),
+            dcc.Store(id="filter-state", data={"account_name": None, "similarity_order": None}),
             html.Button("Reset", id="reset-button", n_clicks=0, style={"display": "none"})
         ], width=3),
 
@@ -230,37 +236,46 @@ def run_query(n_clicks, query):
 def update_sentiment_chart(interval):
     return generate_chart(interval)
 
-# Combined callback to handle both language change and user icon click
+# Combined callback to handle language change, user icon click, and similar icon click
 @app.callback(
     Output("message-feed", "children"),
-    Output("filter-state", "data"),
     Output("reset-button", "style"),
     Input("language", "value"),
     Input({"type": "user-icon", "index": dash.dependencies.ALL}, "n_clicks"),
+    Input({"type": "similar-icon", "index": dash.dependencies.ALL}, "n_clicks"),
     Input("reset-button", "n_clicks"),
-    State("filter-state", "data"),
     prevent_initial_call=True
 )
-def update_message_feed(language, n_clicks_user, n_clicks_reset, filter_state):
+def update_message_feed(language, n_clicks_user, n_clicks_similar, n_clicks_reset):
     ctx = callback_context
 
     if not ctx.triggered:
-        return generate_feed(language=language), filter_state, {"display": "none"}
+        return generate_feed(language=language), {"display": "none"}
 
     triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
     if "user-icon" in triggered_id:
         clicked_index = eval(triggered_id)['index']
         filtered_account = messages[clicked_index]['account']
-        filter_state["account_name"] = filtered_account
-        return generate_feed(language=language, account_name=filtered_account), filter_state, {"display": "block", 'width': '100%', 'backgroundColor': '#343a40', 'color': '#ffffff', 'border': 'none', 
+        return generate_feed(language=language, account_name=filtered_account), {"display": "block", 'width': '100%', 'backgroundColor': '#343a40', 'color': '#ffffff', 'border': 'none',
+        'padding': '10px','borderRadius': '12px','fontSize': '16px', "marginTop": 15}
+
+    elif "similar-icon" in triggered_id:
+        clicked_index = eval(triggered_id)['index']
+        clicked_text, clicked_date = messages[clicked_index]['text_english_genai'], messages[clicked_index]['date']
+        query_message = f"[Date: {clicked_date}] {clicked_text}"  # Format the document
+
+        results = similarity_search.query(query_message, n_results=100)  # top 100 most similar messages
+        similarity_order = [int(mid) for mid in results['ids'][0]]
+        return generate_feed(language=language, similarity_order=similarity_order), {"display": "block", 'width': '100%', 'backgroundColor': '#343a40', 'color': '#ffffff', 'border': 'none',
         'padding': '10px','borderRadius': '12px','fontSize': '16px', "marginTop": 15}
 
     elif "reset-button" in triggered_id:
-        filter_state["account_name"] = None
-        return generate_feed(language=language), filter_state, {"display": "none"}
+        return generate_feed(language=language), {"display": "none"}
 
-    return generate_feed(language=language, account_name=filter_state["account_name"]), filter_state, {"display": "none"}
+    else:
+        raise NotImplementedError(f"This callback is not implemented for the triggered ID: {triggered_id}")
+
 
 
 if __name__ == '__main__':

@@ -43,16 +43,16 @@ class SimilaritySearch:
         # Initialize a persistent Chroma client
         self.chroma_client = chromadb.PersistentClient(path=persist_directory)
         self.collection = self.chroma_client.create_collection(
-            name='similarity_search',
+            name='similarity_search_db',
             embedding_function=self.embedding_function,
             metadata={"hnsw:space": "cosine"}
         )    
 
-    def load_collection(self, host, port):
+    def load_collection(self, host='localhost', port=8000):
         # Initialize a Chroma client
         self.chroma_client = chromadb.HttpClient(host=host, port=port)
         self.collection = self.chroma_client.get_collection(
-            name="similarity_search", 
+            name="similarity_search_db", 
             embedding_function=self.embedding_function
             )
         
@@ -102,7 +102,7 @@ def search(query: str, n_results: int):
 
     # Initialize the SimilaritySearch class
     similarity_search = SimilaritySearch(GOOGLE_API_KEY=GOOGLE_API_KEY)
-    similarity_search.load_collection(host="localhost", port=8001)
+    similarity_search.load_collection(host="localhost", port=8000)
 
     # Search for similar documents
     results = similarity_search.query(query, n_results=n_results)
@@ -128,6 +128,6 @@ if __name__ == "__main__":
     main()
 
 # build database: uv run similarity_search.py
-# host the database: uv run chroma run --path ../data/.chroma/similarity_search_db --host localhost --port 8000
+# host the database on terminal 1: uv run chroma run --path ../data/.chroma/similarity_search_db --host localhost --port 8000
 
-# query the database: uv run similarity_search.py --query "A huge explosion was heard in Rafah"
+# query the database on terminal 2: uv run similarity_search.py --query "A huge explosion was heard in Rafah"
