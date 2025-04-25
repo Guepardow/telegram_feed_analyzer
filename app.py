@@ -37,7 +37,7 @@ def sentiment_to_color(neg, neu, pos):
     return f"rgba({int(neg*255)}, {int(pos*255)}, 0, 1.0)"
             
 # Function to generate message feed
-def generate_feed(language, account_name=None, similarity_order=None):
+def generate_feed(account_name=None, similarity_order=None):
 
     cards = []
     is_using_a_filter = (account_name is not None) or (similarity_order is not None)
@@ -56,7 +56,7 @@ def generate_feed(language, account_name=None, similarity_order=None):
     for i, message in enumerate(filtered_messages):
         url = f"https://t.me/{message['account']}/{message['id']}"
         border_color = sentiment_to_color(float(message['negative_genai']), float(message['neutral_genai']), float(message['positive_genai']))
-        content = message['text_english_genai'] if language == 'English' else message['text']
+        content = message['text_english_genai']
         background_color = "#555555" if i == 0 and similarity_order else "#353535"
 
         cards.append(html.Div([
@@ -82,7 +82,7 @@ def generate_feed(language, account_name=None, similarity_order=None):
                                 # NB: 10*i+j where i is the index of the message and j is the index of the geolocation
                                 #  Since j is never greater than 9, we can use it as a unique identifier
                                 dbc.Tooltip(geoloc, target={"type": "location-icon", "index": 10*i+j}, placement="top"),
-                                html.Img(src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/location_r.png", height=16, style={"marginRight": "5px"}, id={"type": "location-icon", "index": 10*i+j}) if message['coords_genai'] else None
+                                html.Img(src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/location_r.png", height=16, style={"marginRight": "5px", "cursor": "pointer"}, id={"type": "location-icon", "index": 10*i+j}) if message['coords_genai'] else None
                                 ])
                                 for j, geoloc in enumerate(message['geolocs_genai'])
                         ], style={"display": "flex", "alignItems": "center", "marginLeft": "auto"}),
@@ -98,6 +98,8 @@ def generate_feed(language, account_name=None, similarity_order=None):
 
     return cards
 
+default_feed = generate_feed(account_name=None, similarity_order=None)
+
 def get_geolocations(messages: list[dict]) -> list[dict]:
     geolocations = []
     for mid, message in enumerate(messages):
@@ -107,7 +109,7 @@ def get_geolocations(messages: list[dict]) -> list[dict]:
     return geolocations
 
 
-def generate_map(messages):
+def generate_map(messages, center=(32, 35), zoom=8):
 
     locations = []
     for message in messages:
@@ -130,7 +132,7 @@ def generate_map(messages):
             locations.append({'lat': coord[0]+ np.random.uniform(-1e-4, 1e-4), 'lon': coord[1]+ np.random.uniform(-1e-4, 1e-4),  # Add noise to avoid overlapping markers
             'tooltip': tooltip, 'popup': html.A(url, href=url, target="_blank")})
 
-    m =  dl.Map(center=(32, 35), zoom=8, children=[
+    m =  dl.Map(center=center, zoom=zoom, children=[
         dl.TileLayer(url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
                      attribution="© OpenStreetMap contributors, © CartoDB"),
         *[dl.Marker(position=(loc["lat"], loc["lon"]),
@@ -138,15 +140,15 @@ def generate_map(messages):
                         dl.Tooltip(loc["tooltip"]),
                         dl.Popup(loc["popup"])
                     ]) for loc in locations]
-    ], style={'width': '100%', 'height': '100%'})
+    ], style={'width': '100%', 'height': '100%'}, id="map")
 
     return m
 
-def generate_chart(interval):
-
+def precompute_df_sentiment(messages):
     df = pd.DataFrame(messages)
     df["date"] = pd.to_datetime(df["date"])
-    df['date_r'] = df['date'].dt.round(interval)
+    df['date_r'] = df['date'].dt.round('5min')  # Round to the most precise interval: 5 minutes
+    # so it will be faster to regroup the data and regenerate the chart
 
     df['dominant_sentiment'] = df[['negative_genai', 'neutral_genai', 'positive_genai']].idxmax(axis=1)
 
@@ -159,7 +161,19 @@ def generate_chart(interval):
         'positive_genai': 'positive'
     })
 
-    fig = px.bar(df_long, x='date_r', y='count', color='sentiment',
+    return df_long
+
+df_long = precompute_df_sentiment(messages)
+
+def generate_chart(df_long, interval):
+
+    df_interval = df_long.copy()
+    df_interval['date_r'] = df_interval['date_r'].dt.round(interval)
+
+    # Sum the counts for each interval
+    df_interval = df_interval.groupby(['date_r', 'sentiment']).sum().reset_index()
+
+    fig = px.bar(df_interval, x='date_r', y='count', color='sentiment',
                  color_discrete_map={"neutral": "#eeeeee", "negative": "#e74c3c", "positive": "#2ecc71"},
                  labels={'date_r': '', 'count': 'Number of messages'})
 
@@ -185,11 +199,7 @@ app.layout = dbc.Container([
                                                           'padding-top': '20px'}),
     dbc.Row([
         dbc.Col([
-            dbc.Row([
-                html.H5("Language:", style={"width": '30%'}),
-                dcc.Dropdown(options=["English", "No translation"], value="English", id="language", clearable=False, style={"width": "65%"})
-            ]),
-            html.Div(id="message-feed", children=generate_feed("English"), style={"maxHeight": "730px", "overflowY": "scroll", "marginTop": 20}),
+            html.Div(id="message-feed", children=default_feed, style={"maxHeight": "730px", "overflowY": "scroll", "marginTop": 20}),
             dcc.Store(id="filter-state", data={"account_name": None, "similarity_order": None}),
             html.Button("Reset", id="reset-button", n_clicks=0, style={"display": "none"})
         ], width=3),
@@ -204,10 +214,10 @@ app.layout = dbc.Container([
         ], width=3, style={"padding-right": 0}),
 
         dbc.Col([
-            html.Div(id="map-box", children=generate_map(messages), style={"height": "80%"}),
+            html.Div(children=generate_map(messages), style={"height": "80%"}),
             html.Div([
                 dcc.RadioItems(["5min", "30min", "4h", "24h"], "30min", id="interval", inline=False, style={"flex": "1", "marginTop": 100}),
-                dcc.Graph(id="sentiment-chart", figure=generate_chart("30min"), style={"flex": "7"})
+                dcc.Graph(id="sentiment-chart", figure=generate_chart(df_long, "30min"), style={"flex": "7"})
             ], style={"display": "flex", "height": "40%"})
         ], width=6, style={"padding-left": 0})
 
@@ -231,30 +241,29 @@ def run_query(n_clicks, query):
     Input("interval", "value")
 )
 def update_sentiment_chart(interval):
-    return generate_chart(interval)
+    return generate_chart(df_long, interval)
 
-# Combined callback to handle language change, user icon click, and similar icon click
+# Combined callback to handle user-icon click and similar-icon click
 @app.callback(
     Output("message-feed", "children"),
     Output("reset-button", "style"),
-    Input("language", "value"),
     Input({"type": "user-icon", "index": dash.dependencies.ALL}, "n_clicks"),
     Input({"type": "similar-icon", "index": dash.dependencies.ALL}, "n_clicks"),
     Input("reset-button", "n_clicks"),
     prevent_initial_call=True
 )
-def update_message_feed(language, n_clicks_user, n_clicks_similar, n_clicks_reset):
+def update_message_feed(n_clicks_user, n_clicks_similar, n_clicks_reset):
     ctx = callback_context
 
     if not ctx.triggered:
-        return generate_feed(language=language), {"display": "none"}
+        return default_feed, {"display": "none"}
 
     triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
     if "user-icon" in triggered_id:
         clicked_index = eval(triggered_id)['index']
         filtered_account = messages[clicked_index]['account']
-        return generate_feed(language=language, account_name=filtered_account), {"display": "block", 'width': '100%', 'backgroundColor': '#343a40', 'color': '#ffffff', 'border': 'none',
+        return generate_feed(account_name=filtered_account), {"display": "block", 'width': '100%', 'backgroundColor': '#343a40', 'color': '#ffffff', 'border': 'none',
         'padding': '10px','borderRadius': '12px','fontSize': '16px', "marginTop": 15}
 
     elif "similar-icon" in triggered_id:
@@ -264,16 +273,36 @@ def update_message_feed(language, n_clicks_user, n_clicks_similar, n_clicks_rese
 
         results = similarity_search.query(query_message, n_results=100)  # top 100 most similar messages
         similarity_order = [int(mid) for mid in results['ids'][0]]
-        return generate_feed(language=language, similarity_order=similarity_order), {"display": "block", 'width': '100%', 'backgroundColor': '#343a40', 'color': '#ffffff', 'border': 'none',
+        return generate_feed(similarity_order=similarity_order), {"display": "block", 'width': '100%', 'backgroundColor': '#343a40', 'color': '#ffffff', 'border': 'none',
         'padding': '10px','borderRadius': '12px','fontSize': '16px', "marginTop": 15}
 
     elif "reset-button" in triggered_id:
-        return generate_feed(language=language), {"display": "none"}
+        return default_feed, {"display": "none"}
 
     else:
         raise NotImplementedError(f"This callback is not implemented for the triggered ID: {triggered_id}")
 
 
+@app.callback(
+    Output("map", "center"),
+    Output("map", "zoom"),
+    Input({"type": "location-icon", "index": dash.dependencies.ALL}, "n_clicks"),
+)
+def zoom_to_marker(n_clicks):
+    ctx = callback_context
+
+    if not ctx.triggered:
+        raise dash.exceptions.PreventUpdate
+
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if "location-icon" in triggered_id:
+        index = eval(triggered_id)['index']
+        i, j = index // 10, index % 10
+        coords = messages[i]['coords_genai'][j]
+        lat, lon = coords
+
+    return (lat, lon), 14
 
 if __name__ == '__main__':
     app.run(debug=True)

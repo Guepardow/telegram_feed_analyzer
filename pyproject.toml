@@ -1,13 +1,13 @@
 [project]
 name = "telegram-feed-analyzer"
-version = "0.3.0"
+version = "0.4.0"
 description = "Using Generative AI on Telegram for Crisis Reporting"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "chromadb==0.6.3",
     "click>=8.1.8",
-    "dash>=3.0.3",
+    "dash>=3.0.4",
     "dash-bootstrap-components>=2.0.2",
     "dash-extensions>=1.0.20",
     "dash-leaflet>=1.0.15",
