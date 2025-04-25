@@ -152,6 +152,6 @@ if __name__ == "__main__":
     main()
 
 # build database: uv run rag.py
-# host the database: uv run chroma run --path ../data/.chroma/rag_db --host localhost --port 8000
+# host the database: uv run chroma run --path ../data/.chroma/rag_db --host localhost --port 8001
 
-# query the database: uv run rag.py --query "What happened?"
+# query the database: uv run rag.py --query "What happened in Rafah?"

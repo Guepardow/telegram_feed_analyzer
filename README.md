@@ -26,13 +26,13 @@ This project enhances Telegram feeds, using the Gemini AI API, by adding the fol
 # Installation
 
 Main technology used: 
-<a href="https://www.python.org/"><img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/python.png" alt="Python" height="35px" style="vertical-align: middle;margin-left:15px;margin-right:15px"></a>
+<a href="https://www.python.org/"><img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/python.png" alt="Python" height="35px" style="vertical-align: middle;margin-left:15px;margin-right:25px"></a>
 <a href="https://aistudio.google.com/app/apikey">
-<img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/gemini.png" alt="Gemini" height="35px" style="vertical-align: middle;margin-right:15px"></a>
+<img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/gemini.png" alt="Gemini" height="35px" style="vertical-align: middle;margin-right:25px"></a>
 <a href="https://docs.trychroma.com/docs/overview/introduction">
-<img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/chromadb.png" alt="ChromaDB" height="35px" style="vertical-align: middle;margin-right:15px"></a>
+<img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/chromadb.png" alt="ChromaDB" height="35px" style="vertical-align: middle;margin-right:25px"></a>
 <a href="https://dash.plotly.com/">
-<img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/dash.png" alt="Dash" height="35px" style="vertical-align: middle;margin-right:15px"></a>
+<img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/dash.png" alt="Dash" height="35px" style="vertical-align: middle;margin-right:25px"></a>
 
 ## Setup
 This project uses `uv` as a project manager; you can [download it here](https://docs.astral.sh/uv/).
@@ -59,30 +59,13 @@ wget -q https://mehdimiah.com/blog/telegram_feed_analyzer/data/data_telegram_250
 
 Check [data/README.md](data/README.md) for more information.
 
-# Gradio Dashboard (obsolete, check the Dash App)
-
-First, create a Persistent Chroma database for the RAG system (the database with embeddings will be stored in `./data/.chroma/rag_db`):
-```sh
-cd src/gemini
-uv run build_rag_db.py
-```
-
-You can then run a local gradio dashboard by running:
-
-```sh
-# terminal 1 to run the database server as a HttpClient: 
-uv run chroma run --path ./data/.chroma/rag_db --host localhost --port 8001
-
-# terminal 2 to run the gradio dashboard : 
-uv run gradio app.py
-```
-
 # Dash Dashboard
 
-First, create a Persistent Chroma database for the RAG system (the database with embeddings will be stored in `./data/.chroma/rag_db`):
+First, create Persistent Chroma databases for the embeddings (for the tasks on semantic search and retrieval). The databases will be stored in `./data/.chroma`):
 ```sh
-cd src/gemini
-uv run build_rag_db.py
+cd src
+uv run similarity_search.py  # build the Chroma database with the embeddings on semantic search
+uv run rag.py  # build the Chroma database with the embeddings for the RAG system
 ```
 
 You can then run a local Dash dashboard by running:
@@ -95,7 +78,7 @@ uv run chroma run --path ./data/.chroma/similarity_search_db --host localhost --
 uv run chroma run --path ./data/.chroma/rag_db --host localhost --port 8001
 
 # terminal 3 to run the Dash dashboard: 
-uv run dash_app.py
+uv run app.py
 ```
 
 # Analysis tool guidelines

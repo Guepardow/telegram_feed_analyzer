@@ -128,6 +128,6 @@ if __name__ == "__main__":
     main()
 
 # build database: uv run similarity_search.py
-# host the database: uv run chroma run --path ../data/.chroma/similarity_search_db --host localhost --port 8001
+# host the database: uv run chroma run --path ../data/.chroma/similarity_search_db --host localhost --port 8000
 
 # query the database: uv run similarity_search.py --query "A huge explosion was heard in Rafah"
