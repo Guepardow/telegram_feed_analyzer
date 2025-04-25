@@ -1,8 +1,8 @@
 import json
 import yaml
-import folium
 import numpy as np
 import pandas as pd
+import dash_leaflet as dl
 
 import dash
 import plotly.express as px
@@ -79,8 +79,10 @@ def generate_feed(language, account_name=None, similarity_order=None):
                     html.Div([
                         html.Div([
                             html.Div([
-                                dbc.Tooltip(geoloc, target=f"location-icon-{i}-loc{j}", placement="top"),
-                                html.Img(src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/location_r.png", height=16, style={"marginRight": "5px"}, id=f"location-icon-{i}-loc{j}") if message['coords_genai'] else None
+                                # NB: 10*i+j where i is the index of the message and j is the index of the geolocation
+                                #  Since j is never greater than 9, we can use it as a unique identifier
+                                dbc.Tooltip(geoloc, target={"type": "location-icon", "index": 10*i+j}, placement="top"),
+                                html.Img(src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/location_r.png", height=16, style={"marginRight": "5px"}, id={"type": "location-icon", "index": 10*i+j}) if message['coords_genai'] else None
                                 ])
                                 for j, geoloc in enumerate(message['geolocs_genai'])
                         ], style={"display": "flex", "alignItems": "center", "marginLeft": "auto"}),
@@ -107,43 +109,38 @@ def get_geolocations(messages: list[dict]) -> list[dict]:
 
 def generate_map(messages):
 
-    m = folium.Map(location=[35.0, 38.0], tiles="Cartodb Dark Matter", zoom_start=7)
-    location_markers = []
-    urls = []  
-    texts = []
-    accounts = []
-    dates = []
-
-    for i, message in enumerate(messages):
-        coords = [c for c in message['coords_genai'] if c[0] is not None and c[1] is not None]
+    locations = []
+    for message in messages:
+        coords = [c for c in message['coords_genai']]
         url = f"https://t.me/{message['account']}/{message['id']}"
 
+        account, date = message['account'], message['date']
+        text = message['text_english_genai']
+
         for coord in coords:
-            location_markers.append((coord[0] + np.random.uniform(-1e-4, 1e-4), coord[1] + np.random.uniform(-1e-4, 1e-4)))
-            urls.append(url)
-            texts.append(message['text_english_genai'])
-            accounts.append(message['account'])
-            dates.append(message['date'])
 
-    for coords, url, text, account, date in zip(location_markers, urls, texts, accounts, dates):
-        # tooltip_html = f'<div style="white-space: normal">{text}</div>'
-        tooltip_html = f'''
-        <div style="white-space: normal; background-color: #353535; color: white">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="float: left;padding-left:3px">{account}</span>
-                <span style="float: right;padding-right:3px">{date}</span>
-            </div>
-            <div style="margin-top: 2px;padding:3px">{text}</div>
-        </div>
-        '''
-        folium.Marker(
-            location=coords,
-            tooltip=folium.map.Tooltip(folium.Html(tooltip_html, script=True, width=300).render()),
-            popup=f"<a href='{url}' target='_blank'>{url}</a>"
-        ).add_to(m)
+            tooltip = html.Div([
+                html.Div([
+                    html.Span(account, style={"float": "left", "paddingLeft": "3px"}),
+                    html.Span(date, style={"float": "right", "paddingRight": "3px"})
+                ], style={"display": "flex", "justifyContent": "space-between", "alignItems": "center"}),
+                html.Div(text, style={"marginTop": "2px", "padding": "3px"})
+            ], style={"whiteSpace": "normal", "backgroundColor": "#353535", "color": "white", "width": "300px"})            
 
-    return m._repr_html_()
+            locations.append({'lat': coord[0]+ np.random.uniform(-1e-4, 1e-4), 'lon': coord[1]+ np.random.uniform(-1e-4, 1e-4),  # Add noise to avoid overlapping markers
+            'tooltip': tooltip, 'popup': html.A(url, href=url, target="_blank")})
 
+    m =  dl.Map(center=(32, 35), zoom=8, children=[
+        dl.TileLayer(url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+                     attribution="© OpenStreetMap contributors, © CartoDB"),
+        *[dl.Marker(position=(loc["lat"], loc["lon"]),
+                    children=[
+                        dl.Tooltip(loc["tooltip"]),
+                        dl.Popup(loc["popup"])
+                    ]) for loc in locations]
+    ], style={'width': '100%', 'height': '100%'})
+
+    return m
 
 def generate_chart(interval):
 
@@ -207,10 +204,10 @@ app.layout = dbc.Container([
         ], width=3, style={"padding-right": 0}),
 
         dbc.Col([
-            html.Iframe(id="map-box", srcDoc=generate_map(messages), style={"height": "70%", "width": "100%"}),
+            html.Div(id="map-box", children=generate_map(messages), style={"height": "80%"}),
             html.Div([
-                dcc.RadioItems(["5min", "30min", "4h", "24h"], "4h", id="interval", inline=False, style={"flex": "1", "marginTop": 100}),
-                dcc.Graph(id="sentiment-chart", figure=generate_chart("4h"), style={"flex": "7"})
+                dcc.RadioItems(["5min", "30min", "4h", "24h"], "30min", id="interval", inline=False, style={"flex": "1", "marginTop": 100}),
+                dcc.Graph(id="sentiment-chart", figure=generate_chart("30min"), style={"flex": "7"})
             ], style={"display": "flex", "height": "40%"})
         ], width=6, style={"padding-left": 0})
 
