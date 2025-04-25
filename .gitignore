@@ -10,7 +10,10 @@ wheels/
 .venv
 
 # Data
-./data/*
+./data
 
 # API keys and custom config
 config.yaml
+
+# Logs
+*.log

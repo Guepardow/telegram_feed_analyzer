@@ -1,12 +1,12 @@
+import os
 from google import genai
 from google.genai import types
 # from google.api_core import retry
-# from IPython.display import Markdown, display
 import yaml
 import typing_extensions as typing
 
-
-GOOGLE_API_KEY = yaml.safe_load(open("../../config.yaml"))['secret_keys']['google']['api_key']
+config_path = os.path.join(os.path.dirname(__file__), '../../config.yaml')
+GOOGLE_API_KEY = yaml.safe_load(open(config_path))['secret_keys']['google']['api_key']
 client = genai.Client(api_key=GOOGLE_API_KEY)
 
 # is_retriable = lambda e: (isinstance(e, genai.errors.APIError) and e.code in {429, 503})
@@ -125,5 +125,5 @@ def structured_analysis(text: str, prompt_template: str):
   return response.parsed
 
 
-text = '**للمرة الثانية خلال أسابيع... الاحتلال يهدم منزلين في طوبا الزنغرية بالداخل الفلسطيني المحتل، صباح اليوم**'
-print(structured_analysis(text, COMBINED_PROMPT))
+# text = '**للمرة الثانية خلال أسابيع... الاحتلال يهدم منزلين في طوبا الزنغرية بالداخل الفلسطيني المحتل، صباح اليوم**'
+# print(structured_analysis(text, COMBINED_PROMPT))

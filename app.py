@@ -46,6 +46,26 @@ def sentiment_to_color(negative_score, neutral_score, positive_score):
         return f"rgba({int(negative_score*255)}, {int(positive_score*255)}, 0.0, 1.0)"
 
 
+# JavaScript function to handle zoom
+js_code = """
+function zoomToCoordinates(lat, lon) {
+    var map = window.map;
+    if (map) {
+        map.setView([lat, lon], 5);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    var mapElement = document.querySelector('.folium-map');
+    if (mapElement) {
+        window.map = L.map(mapElement.id).setView([35.0, 38.0], 7);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        }).addTo(window.map);
+    }
+});
+"""
+
 # Function to generate message feed
 def generate_message_feed(language):
 
@@ -140,7 +160,7 @@ genai_client = genai.Client(api_key=GOOGLE_API_KEY)
 embed_function = GeminiEmbeddingFunction(genai_client=genai_client, document_mode=False)
 
 # Initialize the HttpClient to connect to the Chroma server
-chroma_client = chromadb.HttpClient(host='localhost', port=8000)
+chroma_client = chromadb.HttpClient(host='localhost', port=8001)
 database = chroma_client.get_collection(name="telegram", embedding_function=embed_function)
 
 # Function to answer the question using the database (RAG)
@@ -203,26 +223,6 @@ def generate_map(location_markers, urls, texts):
     return m._repr_html_()
 
 
-# JavaScript function to handle zoom
-# js_code = """
-# function zoomToCoordinates(lat, lon) {
-#     var map = window.map;
-#     if (map) {
-#         map.setView([lat, lon], 5);
-#     }
-# }
-
-# document.addEventListener('DOMContentLoaded', function() {
-#     var mapElement = document.querySelector('.folium-map');
-#     if (mapElement) {
-#         window.map = L.map(mapElement.id).setView([35.0, 38.0], 7);
-#         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-#             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-#         }).addTo(window.map);
-#     }
-# });
-# """
-
 # Function to generate bar chart
 def generate_chart(interval):
 
@@ -249,7 +249,7 @@ def generate_chart(interval):
 
 
 # Gradio interface
-with gr.Blocks(theme=gr.themes.Ocean()) as demo:
+with gr.Blocks(theme=gr.themes.Ocean(), js=js_code) as demo:
     gr.Markdown("# AI-Augmented Telegram Feed Analyzer")
 
     with gr.Row():
@@ -270,8 +270,7 @@ with gr.Blocks(theme=gr.themes.Ocean()) as demo:
             #gr.Checkbox(label="Use Google Search", value=False, interactive=True) 
             submit_button = gr.Button("Run")
 
-            response_ai = question_to_database(query) if query.value else ""
-            response = gr.HTML(gr.Markdown(response_ai, max_height=750))
+            response = gr.HTML(gr.Markdown(question_to_database(query) if query.value else "", max_height=750))
 
         with gr.Column(scale=2):
 

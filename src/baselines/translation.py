@@ -1,5 +1,7 @@
+import langid
 from loguru import logger
-import asyncio
+from transformers import pipeline
+from googletrans import Translator
 
 
 async def translate_with_googletrans(text: str) -> str:
@@ -8,21 +10,24 @@ async def translate_with_googletrans(text: str) -> str:
     Args:
         text (str): Text to be translated.
     """
-    from googletrans import Translator
-
     async with Translator() as translator:
         result = await translator.translate(text, dest='en')
         return (result.text)
 
 
-def translate_with_transformers(text: str) -> str:
+def load_model_translation():
+    translator_arabic = pipeline("translation", model="Helsinki-NLP/opus-mt-ar-en", device='cuda') 
+    translator_hebrew = pipeline("translation", model="Helsinki-NLP/opus-mt-tc-big-he-en", device='cuda')
+
+    return translator_arabic, translator_hebrew
+
+
+def translate_with_transformers(text: str, translator_arabic, translator_hebrew) -> str:
     """
     Translate text using Hugging Face Transformers.
     Args:
         text (str): Text to be translated.
     """
-    import langid
-    from transformers import pipeline
 
     # Detect the language of the text
     language = langid.classify(text)[0]
@@ -31,10 +36,8 @@ def translate_with_transformers(text: str) -> str:
     if language == 'en':
         text_english = text
     elif language == 'ar':
-        translator_arabic = pipeline("translation", model="Helsinki-NLP/opus-mt-ar-en", device='cuda', ) 
         text_english = translator_arabic(text)[0]['translation_text']
     elif language == 'he':
-        translator_hebrew = pipeline("translation", model="Helsinki-NLP/opus-mt-tc-big-he-en", device='cuda')
         text_english = translator_hebrew(text)[0]['translation_text']
     else:
         logger.warning(f"Language {language} not supported for translation. Skipping translation.")
@@ -42,7 +45,8 @@ def translate_with_transformers(text: str) -> str:
     return text_english
 
 
-text = '**للمرة الثانية خلال أسابيع... الاحتلال يهدم منزلين في طوبا الزنغرية بالداخل الفلسطيني المحتل، صباح اليوم**'
+# text = '**للمرة الثانية خلال أسابيع... الاحتلال يهدم منزلين في طوبا الزنغرية بالداخل الفلسطيني المحتل، صباح اليوم**'
 
-print(translate_with_transformers(text))
-print(asyncio.run(translate_with_googletrans(text)))
+# translator_arabic, translator_hebrew = load_model_translation()
+# print(translate_with_transformers(text, translator_arabic, translator_hebrew))
+# print(asyncio.run(translate_with_googletrans(text)))

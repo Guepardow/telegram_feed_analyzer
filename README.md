@@ -25,6 +25,15 @@ This project enhances Telegram feeds, using the Gemini AI API, by adding the fol
 
 # Installation
 
+Main technology used: 
+<a href="https://www.python.org/"><img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/python.png" alt="Python" height="35px" style="vertical-align: middle;margin-left:15px;margin-right:15px"></a>
+<a href="https://aistudio.google.com/app/apikey">
+<img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/gemini.png" alt="Gemini" height="35px" style="vertical-align: middle;margin-right:15px"></a>
+<a href="https://docs.trychroma.com/docs/overview/introduction">
+<img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/chromadb.png" alt="ChromaDB" height="35px" style="vertical-align: middle;margin-right:15px"></a>
+<a href="https://dash.plotly.com/">
+<img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/dash.png" alt="Dash" height="35px" style="vertical-align: middle;margin-right:15px"></a>
+
 ## Setup
 This project uses `uv` as a project manager; you can [download it here](https://docs.astral.sh/uv/).
 
@@ -36,7 +45,9 @@ uv sync
 
 ## Authentification
 
-You can get a [Google API key here](https://aistudio.google.com/app/apikey). Then, update the file `config.yaml` with this key.
+You can get a [Google API key here (for free)](https://aistudio.google.com/app/apikey). Then, update the file `config.yaml` with this key.
+
+[Optional] You can get a [Telethon API key here (for free)](https://docs.telethon.dev/en/stable/basic/signing-in.html). Then, update the file `config.yaml` with this key.
 
 # Data
 
@@ -46,9 +57,11 @@ You can download 1987 "enhanced messages" posted on Telegram on March 31st, 2025
 wget -q https://mehdimiah.com/blog/telegram_feed_analyzer/data/data_telegram_250331.json -O ./data/telegram_250331.json
 ```
 
-# Gradio Dashboard
+Check [data/README.md](data/README.md) for more information.
 
-First, create a Persistent Chroma database for the RAG system (the database with embeddings will be stored in `./data/.chromadb/rag_db`):
+# Gradio Dashboard (obsolete, check the Dash App)
+
+First, create a Persistent Chroma database for the RAG system (the database with embeddings will be stored in `./data/.chroma/rag_db`):
 ```sh
 cd src/gemini
 uv run build_rag_db.py
@@ -58,43 +71,70 @@ You can then run a local gradio dashboard by running:
 
 ```sh
 # terminal 1 to run the database server as a HttpClient: 
-uv run chroma run --path ./data/.chromadb/rag_db --host localhost --port 8000
+uv run chroma run --path ./data/.chroma/rag_db --host localhost --port 8001
 
 # terminal 2 to run the gradio dashboard : 
 uv run gradio app.py
+```
+
+# Dash Dashboard
+
+First, create a Persistent Chroma database for the RAG system (the database with embeddings will be stored in `./data/.chroma/rag_db`):
+```sh
+cd src/gemini
+uv run build_rag_db.py
+```
+
+You can then run a local Dash dashboard by running:
+
+```sh
+# terminal 1 to run the database server with the embeddings on semantic search as a HttpClient: 
+uv run chroma run --path ./data/.chroma/similarity_search_db --host localhost --port 8000
+
+# terminal 2 to run the database server with the embeddings on retrieval (RAG) as a HttpClient: 
+uv run chroma run --path ./data/.chroma/rag_db --host localhost --port 8001
+
+# terminal 3 to run the Dash dashboard: 
+uv run dash_app.py
 ```
 
 # Analysis tool guidelines
 
 ## Multi-lingual translation, geolocation and sentiment analysis
 
-With Gemini 2.0 Flash:
+With Gemini 2.0 Flash, run the analysis on a single post:
 ```bash
-uv run analysis.py https://t.me/<account_name>/<message_id>
+cd src ; uv run get_analysis.py --post https://t.me/<account_name>/<message_id> --method gemini
 ```
 
-With a baseline method (less efficient but does not require any GOOGLE_API_KEY):
+With a baseline method (less efficient but does not require any GOOGLE_API_KEY but requires CUDA):
 ```bash
-uv run src/baselines/analysis.py https://t.me/<account_name>/<message_id>
+cd src ; uv run get_analysis.py --post https://t.me/<account_name>/<message_id> --method baseline
 ```
 
 ## Similar message search
 
 With Gemini 2.0 Flash:
 ```bash
-uv run similar.py --post https://t.me/<account_name>/<message_id> --db ./.chroma
+cd src ; uv run similarity_search.py  # build the Chroma database with the embeddings
+uv run chroma run --path ../data/.chroma/similarity_search_db --host localhost --port 8000  # terminal 1
+uv run similarity_search.py --query "A huge explosion was heard in Rafah" # terminal 2
 ```
 
-With a baseline method (less efficient but does not require any GOOGLE_API_KEY):
+With a baseline method (less efficient but does not require any GOOGLE_API_KEY but requires CUDA):
 ```bash
-uv run src/baselines/similar.py --post https://t.me/<account_name>/<message_id> --db ./.chroma
+cd src/baselines  ; uv run similarity_search.py  # build the Chroma database with the embeddings
+uv run chroma run --path ../../data/.chroma/bert_db --host localhost --port 8000  # terminal 1
+uv run similarity_search.py --query "A huge explosion was heard in Rafah" # terminal 2
 ```
 
 ## Retrieval-Augmented Generation (RAG)
 
 With Gemini 2.0 Flash:
 ```bash
-uv run rag.py --query "To be or not to be?" --db ./.chroma
+cd src ; uv run rag.py  # build the Chroma database with the embeddings
+uv run chroma run --path ../data/.chroma/rag_db --host localhost --port 8001  # terminal 1
+uv run rag.py --query "What happened in Rafah?"  # terminal 2
 ```
 
 

@@ -1,41 +1,34 @@
-import os
 import json
 import yaml
 import folium
-import requests
 import numpy as np
 import pandas as pd
 
 import dash
-from dash import html, dcc, Input, Output, State, callback_context
-import dash_bootstrap_components as dbc
 import plotly.express as px
+import dash_bootstrap_components as dbc
 from dash_extensions.enrich import DashProxy, TriggerTransform
 
-from src.gemini.build_rag_db import GeminiEmbeddingFunction
-import chromadb
-from google import genai
-from google.genai import types
+from dash import html, dcc, Input, Output, State, callback_context
+
+from src.rag import RAG
+from src.similarity_search import SimilaritySearch
 
 
 # Load data
-DATA_PATH = "./data/data_telegram_250331.json"
-if not os.path.exists(DATA_PATH):
-    url = 'https://mehdimiah.com/blog/telegram_feed_analyzer/data/data_telegram_250331.json'
-    os.makedirs('./data', exist_ok=True)
-    with open(DATA_PATH, 'wb') as f:
-        f.write(requests.get(url).content)
-
-with open(DATA_PATH, 'r', encoding='utf-8') as f:
+with open("./data/data_telegram_250331.json", 'r', encoding='utf-8') as f:
     messages = json.load(f)[:200]
 
-# Load config and initialize GenAI
-GOOGLE_API_KEY = yaml.safe_load(open("config.yaml"))['secret_keys']['google']['api_key']
-genai_client = genai.Client(api_key=GOOGLE_API_KEY)
-embed_function = GeminiEmbeddingFunction(genai_client=genai_client, document_mode=False)
+# Load config and initialize the RAG system and the SimilaritySearch system
+with open("./config.yaml") as f:
+    config = yaml.safe_load(f)
+    GOOGLE_API_KEY = config['secret_keys']['google']['api_key']
 
-chroma_client = chromadb.HttpClient(host='localhost', port=8000)
-database = chroma_client.get_collection(name="telegram", embedding_function=embed_function)
+rag = RAG(GOOGLE_API_KEY=GOOGLE_API_KEY)
+rag.load_collection(host='localhost', port=8001)
+
+similarity_search = SimilaritySearch(GOOGLE_API_KEY=GOOGLE_API_KEY)
+similarity_search.load_collection(host='localhost', port=8000)
 
 # Utility functions
 def sentiment_to_color(neg, neu, pos):
@@ -47,14 +40,18 @@ def sentiment_to_color(neg, neu, pos):
 def generate_feed(language, account_name=None):
 
     cards = []
-    filtered_messages = messages if account_name is None else [msg for msg in messages if msg['account'] == account_name]
+    is_using_a_filter = account_name is not None
+
+    filtered_messages = messages if not is_using_a_filter else [msg for msg in messages if msg['account'] == account_name]
+
+    user_icon_style = {"marginRight": "5px", "cursor": "not-allowed", "opacity": "0.5"} if is_using_a_filter else {"marginRight": "5px", "cursor": "pointer"}
+    similar_icon_style = {"marginLeft": "auto", "cursor": "not-allowed", "opacity": "0.5", "display": "flex","alignItems": "center"} if is_using_a_filter else {"display": "flex", "alignItems": "center", "marginLeft": "auto", "cursor": "pointer"}
+                  # {"display": "flex", "alignItems": "center", "marginLeft": "auto"}
 
     for i, message in enumerate(filtered_messages):
         url = f"https://t.me/{message['account']}/{message['id']}"
         border_color = sentiment_to_color(float(message['negative_genai']), float(message['neutral_genai']), float(message['positive_genai']))
         content = message['text_english_genai'] if language == 'English' else message['text']
-
-        user_icon_style = {"marginRight": "5px", "cursor": "pointer"} if account_name is None else {"marginRight": "5px", "cursor": "not-allowed", "opacity": "0.5"}
 
         cards.append(html.Div([
             html.Div([
@@ -86,12 +83,21 @@ def generate_feed(language, account_name=None):
                         ], style={"display": "flex", "alignItems": "center"}),
                     html.Div([
                         html.Img(src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/similar_r.png", height=16)
-                    ], style={"display": "flex", "alignItems": "center", "marginLeft": "auto"})
+                    ], style=similar_icon_style)
                 ], style={"display": "flex", "gap": "5px"})
             ], style={"backgroundColor": "#353535", "borderLeft": f"5px solid {border_color}", "padding": 15, "marginBottom": 10, "marginRight": 10, "borderRadius": 5, "color": "white"})
         ]))
 
     return cards
+
+def get_geolocations(messages: list[dict]) -> list[dict]:
+    geolocations = []
+    for mid, message in enumerate(messages):
+        for gid, coords in enumerate(message['coords_genai']):
+            geolocations.append({'mid': mid, 'gid': gid, 'coords': coords})
+
+    return geolocations
+
 
 def generate_map(messages):
 
@@ -164,39 +170,8 @@ def generate_chart(interval):
         title_x=0.5,
     )
 
-    # Title
-    fig.update_layout()
-
     return fig
 
-
-def question_to_database(query):
-    result = database.query(query_texts=[query], n_results=20)
-    [all_passages] = result["documents"]
-    query_oneline = query.replace("\n", " ")
-    prompt = f"""
-    You are a knowledgeable and professional journalism bot specializing in fact-checking and international humanitarian law.
-    You answer questions using text from the reference passage included below. Be sure to respond in complete sentences, providing comprehensive and well-researched information.
-    Adopt a journalistic tone.
-
-    Since the data come from Telegram, be cautious, as it is from a social network and the information can be inaccurate.
-    Each passage corresponds to a Telegram post: the content, the account and the date of the post are mentioned in each passage.
-    Keep in mind that several hours may pass between an event and the publication of a message related to it.
-
-    If the passage is irrelevant to the answer, you may ignore it.
-
-    QUESTION: {query_oneline}
-    """
-    for passage in all_passages:
-        passage_oneline = passage.replace("\n", " ")
-        prompt += f"PASSAGE: {passage_oneline}\n"
-
-    answer = genai_client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(temperature=0.1)
-    )
-    return answer.text
 
 # Initialize app
 app = DashProxy(__name__, external_stylesheets=[dbc.themes.DARKLY], transforms=[TriggerTransform()])
@@ -245,7 +220,7 @@ app.layout = dbc.Container([
 def run_query(n_clicks, query):
     if not query:
         return "Please enter a query."
-    answer = question_to_database(query)
+    answer = rag.query(query=query, n_results=20)
     return html.Div([html.Hr(), html.Pre(answer, style={"whiteSpace": "pre-wrap"})])
 
 @app.callback(
@@ -290,3 +265,5 @@ def update_message_feed(language, n_clicks_user, n_clicks_reset, filter_state):
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+# uv run dash_app.py
