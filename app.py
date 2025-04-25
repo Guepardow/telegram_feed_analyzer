@@ -63,6 +63,7 @@ def generate_feed(account_name=None, similarity_order=None):
             html.Div([
                 html.Div([
                     html.Div([
+                        dbc.Tooltip(f"Filter on user {message['account']}", target={"type": "user-icon", "index": i}, placement="top", style={"fontSize": "10px"}),
                         html.Img(src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/user_r.png", height=16, style=user_icon_style,
                                 id={"type": "user-icon", "index": i}),
                         html.Span(message['account'], style={"float": "left", "verticalAlign": "top"})
@@ -90,10 +91,11 @@ def generate_feed(account_name=None, similarity_order=None):
                         html.Img(src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/film_r.png", height=16) if message['has_video'] else None
                         ], style={"display": "flex", "alignItems": "center"}),
                     html.Div([
+                        dbc.Tooltip("Search for similar message", target={"type": "similar-icon", "index": i}, placement="top", style={"fontSize": "10px"}),
                         html.Img(src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/similar_r.png", height=16, id={"type": "similar-icon", "index": i})
                     ], style=similar_icon_style)
                 ], style={"display": "flex", "gap": "5px"})
-            ], style={"backgroundColor": background_color, "borderLeft": f"5px solid {border_color}", "padding": 15, "marginBottom": 10, "marginRight": 10, "borderRadius": 5, "color": "white"})
+            ], style={"backgroundColor": background_color, "borderLeft": f"5px solid {border_color}", "padding": 10, "marginBottom": 10, "marginRight": 5, "borderRadius": 5, "color": "white"})
         ]))
 
     return cards
@@ -185,6 +187,16 @@ def generate_chart(df_long, interval):
         yaxis=dict(gridcolor='gray'),
         title_text="Evolution of dominant sentiment", 
         title_x=0.5,
+
+        # Update the legend
+        legend=dict(
+            orientation="h",  # Horizontal orientation
+            yanchor="bottom", # Align to the bottom
+            y=-0.35,  # Adjust vertical position
+            xanchor="center", # Center the legend
+            x=0.5,     # Place legend in the center horizontally
+            bgcolor='rgba(0,0,0,0)'  # Transparent background for the legend
+        )
     )
 
     return fig
@@ -193,31 +205,53 @@ def generate_chart(df_long, interval):
 # Initialize app
 app = DashProxy(__name__, external_stylesheets=[dbc.themes.DARKLY], transforms=[TriggerTransform()])
 app.title = "Telegram Feed Analyzer"
+app.enable_dev_tools(debug=True, dev_tools_props_check=True)
 
 app.layout = dbc.Container([
     html.H4("AI-Augmented Telegram Feed Analyzer", style={'font-family': 'IBM Plex Sans, sans-serif',
                                                           'padding-top': '20px'}),
     dbc.Row([
+
+        # Left column: message feed
         dbc.Col([
-            html.Div(id="message-feed", children=default_feed, style={"maxHeight": "730px", "overflowY": "scroll", "marginTop": 20}),
-            dcc.Store(id="filter-state", data={"account_name": None, "similarity_order": None}),
+            html.Div(id="message-feed", children=default_feed, style={"maxHeight": "750px", "width": "100%", "overflowY": "scroll", "marginTop": 20}),
             html.Button("Reset", id="reset-button", n_clicks=0, style={"display": "none"})
         ], width=3),
 
+        # Middle column: RAG system
         dbc.Col([
             dbc.Row([
-                dcc.Textarea(id="query-box", placeholder="Enter your question here...", style={"width": "85%", "height": 120, 'backgroundColor': '#343a40', 'color': '#ffffff', 'borderRadius': '12px', "minHeight": 40}),
-                html.Button("Run", id="run-btn", style={'width': '10%', 'backgroundColor': '#343a40', 'color': '#ffffff', 'border': 'none',
-                'padding': '10px','borderRadius': '12px','fontSize': '16px', "marginLeft": 5}),
-            ]),
-            html.Div(id="response-box", style={"marginTop": 20})
-        ], width=3, style={"padding-right": 0}),
+                dbc.Col([
+                    dcc.Textarea(id="query-box", placeholder="Enter your question to the RAG system here...", 
+                    style={'height': 120, 'width': '380px', 'backgroundColor': '#343a40', 'color': '#ffffff', 'padding': '5px', 'borderRadius': '12px', 'minHeight': 40,}
+                    ),
+                ]),
 
+                dbc.Col([
+                    html.Div([
+                        html.Button("Run", id="run-btn", style={'height': '100%', 'backgroundColor': '#343a40', 'color': '#ffffff', 'border': 'none', 
+                        'padding': '5px', 'borderRadius': '12px', 'fontSize': '16px', "fontWeight": "bold", 'width': '40px'}
+                        ),
+                    ], style={"display": "flex", 'width': '40px', "flexDirection": "column", "alignItems": "center",  "height": "120px"}),
+                ]),
+
+            ], align="center"),
+
+            # Box where the response will appear after clicking 'Run'
+            html.Div(
+                id="response-box", 
+                style={"marginTop": 10, "backgroundColor": "#343a40", "padding": "10px", "borderRadius": "12px", "color": "white", 
+                "fontSize": "16px", "maxHeight": "700px", "overflowY": "auto"}
+            )
+
+        ], width=3, style={"padding-right": 15}),
+
+        # Right column: map and chart
         dbc.Col([
             html.Div(children=generate_map(messages), style={"height": "80%"}),
             html.Div([
-                dcc.RadioItems(["5min", "30min", "4h", "24h"], "30min", id="interval", inline=False, style={"flex": "1", "marginTop": 100}),
-                dcc.Graph(id="sentiment-chart", figure=generate_chart(df_long, "30min"), style={"flex": "7"})
+                dcc.RadioItems(["5min", "30min", "4h", "24h"], "30min", id="interval", inline=False, style={"flex": "1", "marginTop": 100, "paddingLeft": 20}),
+                dcc.Graph(id="sentiment-chart", figure=generate_chart(df_long, "30min"), style={"flex": "8"})
             ], style={"display": "flex", "height": "40%"})
         ], width=6, style={"padding-left": 0})
 
@@ -234,7 +268,7 @@ def run_query(n_clicks, query):
     if not query:
         return "Please enter a query."
     answer = rag.query(query=query, n_results=20)
-    return html.Div([html.Hr(), html.Pre(answer, style={"whiteSpace": "pre-wrap"})])
+    return html.Div(dcc.Markdown([answer]))
 
 @app.callback(
     Output("sentiment-chart", "figure"),
