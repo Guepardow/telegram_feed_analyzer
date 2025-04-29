@@ -33,6 +33,8 @@ Main technology used:
 <img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/chromadb.png" alt="ChromaDB" height="35px" style="vertical-align: middle;margin-right:25px"></a>
 <a href="https://dash.plotly.com/">
 <img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/dash.png" alt="Dash" height="35px" style="vertical-align: middle;margin-right:25px"></a>
+<a href="https://react.dev/">
+<img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/react.png" alt="React" height="35px" style="vertical-align: middle;margin-right:25px"></a>
 
 ## Setup
 This project uses `uv` as a project manager; you can [download it here](https://docs.astral.sh/uv/).
