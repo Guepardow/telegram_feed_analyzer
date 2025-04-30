@@ -42,7 +42,7 @@ This project uses `uv` as a project manager; you can [download it here](https://
 ```sh
 git clone https://github.com/Guepardow/telegram_feed_analyzer
 cd telegram_feed_analyzer
-uv sync
+uv sync  # (or if you use pip) pip install -r requirements.txt
 ```
 
 ## Authentification
@@ -86,7 +86,7 @@ uv run app.py
 
   You should get a Dash dashboard that looks like this illustration: 
     <p align="center">
-        <img src="https://www.mehdimiah.com/blog/telegram_feed_analyzer/dashapp_v0.4.0.png" alt="DashApp" width="600"/>
+        <img src="./assets/app-v0.5.1.png" alt="DashApp" width="600"/>
     </p>
 
   On this dashboard, you can : 
@@ -126,12 +126,6 @@ cd src ; uv run get_analysis.py --method gemini --post https://t.me/<account_nam
   
 </details>
 
-
-With a baseline method (less efficient but does not require any GOOGLE_API_KEY but requires CUDA):
-```bash
-cd src ; uv run get_analysis.py --method baseline --post https://t.me/<account_name>/<message_id>
-```
-
 ## Similar message search
 
 With Gemini 2.0 Flash:
@@ -156,13 +150,6 @@ uv run similarity_search.py --query "A huge explosion was heard in Rafah" # term
 # Distance: 0.153 [Date: 2025-03-31 02:24:42] Blowing up a residential square in Al-Sultan neighborhood, west of Rafah, and the sound of its explosion was heard from the central governorate.
  ```
 </details>
-
-With a baseline method (less efficient but does not require any GOOGLE_API_KEY but requires CUDA):
-```bash
-cd src/baselines  ; uv run similarity_search.py  # build the Chroma database with the BERT embeddings
-uv run chroma run --path ../../data/.chroma/bert_db --host localhost --port 8000  # terminal 1
-uv run similarity_search.py --query "A huge explosion was heard in Rafah" # terminal 2
-```
 
 ## Retrieval-Augmented Generation (RAG)
 

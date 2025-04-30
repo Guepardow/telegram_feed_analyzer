@@ -75,7 +75,6 @@ def generate_map(telegram_locations, geoconfirmed_locations):
         text = messages[loc['mid']]['text_english_genai']
         lat, lon = loc['coords']
 
-
         tooltip = html.Div([
             html.Div([
                 html.Span(account, style={"float": "left", "paddingLeft": "3px"}),
@@ -85,7 +84,11 @@ def generate_map(telegram_locations, geoconfirmed_locations):
         ], style={"whiteSpace": "normal", "width": "300px", "borderRadius": "8px"})            
 
         locations.append({'lat': lat+ np.random.uniform(-1e-4, 1e-4), 'lon': lon+ np.random.uniform(-1e-4, 1e-4),  # Add noise to avoid overlapping markers
-        'tooltip': tooltip, 'popup': html.A(url, href=url, target="_blank"), 'icon': None})
+        'tooltip': tooltip, 'popup': html.A(url, href=url, target="_blank"), 'icon': dict(
+                    iconUrl="./assets/marker-icon-blue.png",
+                    iconSize=(24,36),
+                    iconAnchor=(12, 18)
+                    )})
 
     if geoconfirmed_locations:
         for loc in geoconfirmed_locations['features']:
@@ -101,9 +104,9 @@ def generate_map(telegram_locations, geoconfirmed_locations):
             locations.append({
                 'lat': lat, 'lon': lon, 
                 'icon': dict(
-                    iconUrl="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+                    iconUrl="./assets/marker-icon-red.png",
                     iconSize=(24,36),
-                    iconAnchor=(12, 36)
+                    iconAnchor=(12, 18)
                     ),
                     'tooltip': tooltip, 
                     'popup': html.Div([html.A(source, href=source, target="_blank") for source in sources])
@@ -111,8 +114,10 @@ def generate_map(telegram_locations, geoconfirmed_locations):
 
     # Create the map
     m =  dl.Map(center=(32, 35), zoom=8, children=[
-        dl.TileLayer(url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-                     attribution="© OpenStreetMap contributors, © CartoDB"),
+
+        dl.TileLayer(url='https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
+            attribution='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'),
+
         *[dl.Marker(position=(loc["lat"], loc["lon"]),
                     children=[
                         dl.Tooltip(loc["tooltip"]),
@@ -187,13 +192,12 @@ def sentiment_to_color(neg, neu, pos):
     return f"rgba({int(neg*255)}, {int(pos*255)}, 0, 1.0)"
 
 def render_message_html(message):
-    i = message['index']
-    user_icon_url = "https://mehdimiah.com/blog/telegram_feed_analyzer/icon/user_r.png"
-    link_icon_url = "https://mehdimiah.com/blog/telegram_feed_analyzer/icon/link_r.png"
-    location_icon_url = "https://mehdimiah.com/blog/telegram_feed_analyzer/icon/location_r.png"
-    photo_icon_url = "https://mehdimiah.com/blog/telegram_feed_analyzer/icon/photo_r.png"
-    film_icon_url = "https://mehdimiah.com/blog/telegram_feed_analyzer/icon/film_r.png"
-    similar_icon_url = "https://mehdimiah.com/blog/telegram_feed_analyzer/icon/similar_r.png"
+    user_icon_url = './assets/user_r.png'
+    link_icon_url = './assets/link_r.png'
+    location_icon_url = './assets/location_r.png'
+    photo_icon_url = './assets/photo_r.png'
+    video_icon_url = './assets/video_r.png'
+    similar_icon_url = './assets/similar_r.png'
 
     url = f"https://t.me/{message['account']}/{message['id']}"
 
@@ -211,7 +215,7 @@ def render_message_html(message):
         <div style="display:flex;justify-content:space-between;align-items:center;">
 
             <div style="display:flex;align-items:center;position: relative;">
-                <img class="tooltiptext" src="{user_icon_url}" height="16" style="margin-right:5px;cursor:pointer;" id="user-icon-{i}">
+                <img class="tooltiptext user-icon" src="{user_icon_url}" height="16" style="margin-right:5px;cursor:pointer;">
                 <span class="hide" style="font-size: 10px; width: 140px; background-color: #c2c2c2; color: black; text-align: center; border-radius: 5px; padding: 5px; position: absolute; top: 1px; left: 30px;">Filter on user {message['account']}</span>
                 <span style="float:left;vertical-align:top;">{message['account']}</span>
             </div>
@@ -238,12 +242,12 @@ def render_message_html(message):
         html += f'<img src="{photo_icon_url}" height="16" style="margin-right:5px;">'
     
     if message.get('has_video'):
-        html += f'<img src="{film_icon_url}" height="16">'
+        html += f'<img src="{video_icon_url}" height="16">'
 
     html += f"""
             </div>
             <div style="margin-left:auto;cursor:pointer;margin-right: 0;">
-                <img class="tooltiptext" src="{similar_icon_url}" height="16" style="margin-right:-120px;cursor:pointer;" id="similar-icon-{i}">
+                <img class="tooltiptext similar-icon" src="{similar_icon_url}" height="16" style="margin-right:-120px;cursor:pointer;">
                 <span class="hide" style="font-size: 10px; width: 140px; background-color: #c2c2c2; color: black; text-align: center; border-radius: 5px; padding: 5px; position: relative; top: 0px; right: 40px;">Search for similar messages</span>
             </div>
             
@@ -254,7 +258,6 @@ def render_message_html(message):
     return html
 
 for idx, msg in enumerate(messages):
-    msg['index'] = idx
     msg['message_html'] = render_message_html(msg)
 
 df = pd.DataFrame(messages)
@@ -549,7 +552,6 @@ def update_filter(filter_value):
     prevent_initial_call=True
 )
 def update_map(selected_layers):
-    # Control what you pass to generate_map
     telegram = telegram_locations if "telegram" in selected_layers else []
     geoconfirmed = geojson_data if "geoconfirmed" in selected_layers else []
 

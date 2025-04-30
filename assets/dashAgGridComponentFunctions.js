@@ -6,10 +6,10 @@ dagcomponentfuncs.RenderHTML = function (props) {
     const handleClick = (event) => {
         const target = event.target;
 
-        if (target.id.startsWith('user-icon')) {
+        if (target.classList.contains('user-icon')) {
             setData({ filterAccount: data.account }); // Use a different key to avoid conflict
 
-        } else if (target.id.startsWith('similar-icon')) {
+        } else if (target.classList.contains('similar-icon')) {
             setData({ showSimilar: true }); // Signal to show similar messages
 
         } else if (target.classList.contains('location-icon')) {
