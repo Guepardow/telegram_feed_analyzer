@@ -42,15 +42,14 @@ This project uses `uv` as a project manager; you can [download it here](https://
 ```sh
 git clone https://github.com/Guepardow/telegram_feed_analyzer
 cd telegram_feed_analyzer
-uv sync  # (or if you use pip: pip install -r requirements.txt)
-# If you are not using uv, you need to adapt some lines of code below
+uv sync 
 ```
 
 ## Authentification
 
 You must get a [Google API key here (for free)](https://aistudio.google.com/app/apikey). Then, update the file `config.yaml` with this key.
 
-[Optional] You can get a [Telethon API key here (for free)](https://docs.telethon.dev/en/stable/basic/signing-in.html). Then, update the file `config.yaml` with this key.
+[Optional] You can get a [Telethon API key here (for free)](https://docs.telethon.dev/en/stable/basic/signing-in.html). Then, update the file `config.yaml` with the keys.
 
 # Data
 
@@ -62,7 +61,19 @@ curl -q https://mehdimiah.com/blog/telegram_feed_analyzer/data/data_telegram_250
 
 # Dash Dashboard
 
+Two modes are available with the dashboard: `normal mode` and `no-server mode`.
+
+| Characteristics | `normal mode` | `no-server mode` |
+|-----------------|---------------|------------------|
+| Description     | ✅ This is the mode with all the features|❗This is a limited mode |
+| Features        | ✅ All the features |❌ Missing similarity search and RAG features|
+| Requirements    | 🗝️ Google API key |❗ No Google API key required |
+| Servers         | 🖥️ Need to build and launch databases |❗ No need to build or launch databases|
+
+## How to use the `normal mode`?
+
 First, create Persistent Chroma databases for the embeddings (for the tasks on semantic search and retrieval). The databases will be stored in `./data/.chroma`):
+
 ```sh
 cd src
 uv run similarity_search.py  # build the Chroma database with the embeddings on semantic search
@@ -82,12 +93,22 @@ uv run chroma run --path ./data/.chroma/rag_db --host localhost --port 8001
 uv run app.py
 ```
 
+## How to use the `no-server mode`?
+
+You can run a local Dash dashboard in a limited mode by running:
+
+```sh
+# a single terminal
+uv run app.py --no-server
+```
+
+
 <details>
   <summary>Dashboard</summary>
 
   You should get a Dash dashboard that looks like this illustration: 
     <p align="center">
-        <img src="./assets/app-v0.5.1.png" alt="DashApp" width="600"/>
+        <img src="./assets/app-v0.5.1.png" alt="DashApp" width="800"/>
     </p>
 
   On this dashboard, you can : 
@@ -96,6 +117,7 @@ uv run app.py
   - open Telegram on a specific message;
   - search for similar Telegram message;
   - locate on a map a coarsely geolocated Telegram message;
+  - precisely find events geolocated by the Geoconfirmed teams;
   - ask questions to a RAG system built on the Telegram database;
   - visualize the evolution of the sentiment and volume of messages
   

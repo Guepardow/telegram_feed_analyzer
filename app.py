@@ -1,7 +1,9 @@
 import json
 import yaml
+import click
 import numpy as np
 import pandas as pd
+from loguru import logger
 
 import dash
 from dash import dcc, html, Input, Output, State, Patch
@@ -50,18 +52,13 @@ def get_locations(messages: list[dict]) -> list[dict]:
 
 telegram_locations = get_locations(messages)
 
-# --- RAG & semantic search systems ---
-
 # Load config and initialize the RAG system and the SimilaritySearch system
 with open('./config.yaml') as f:
     config = yaml.safe_load(f)
     GOOGLE_API_KEY = config['secret_keys']['google']['api_key']
 
 rag = RAG(GOOGLE_API_KEY=GOOGLE_API_KEY)
-rag.load_collection(host='localhost', port=8001)
-
 similarity_search = SimilaritySearch(GOOGLE_API_KEY=GOOGLE_API_KEY)
-similarity_search.load_collection(host='localhost', port=8000)
 
 # --- Map ---
 def generate_map(messages, geoconfirmed_locations):
@@ -411,18 +408,6 @@ app.layout = dbc.Container([
         dbc.Col([
             dbc.Card([
                 html.Div(children=generate_map(messages, geojson_data), style={'flex': 1, 'height': '50vh', 'backgroundColor': '#1f1f1f', 'borderRadius': '5px', 'padding': '0px', 'marginBottom': '10px'}),
-
-                # dcc.Checklist(
-                #     id='map-checklist',
-                #     options=[
-                #         {'label': 'Telegram', 'value': 'telegram'},
-                #         {'label': 'Geoconfirmed', 'value': 'geoconfirmed'}],
-                #         value=['telegram'],
-                #         inputStyle={'margin-right': '5px'},
-                #         style={'position': 'absolute', 'top': '0px', 'right': '0px', 'z-index': '1000', 
-                #         'backgroundColor': '#3c3c3c', 'color': '#ffffff', 'borderRadius': '8px', 
-                #         'padding-left': '12px', 'padding-right': '20px', 'padding-top': '16px', 'padding-bottom': '8px'}
-                #         ),
                 
                 dcc.Graph(id='sentiment-chart', figure=generate_chart(df_long, '30min'), style={'height': '33vh'}),
 
@@ -565,19 +550,28 @@ def update_filter(filter_value):
     newFilter['quickFilterText'] = filter_value
     return newFilter
 
-# @app.callback(
-#     Output('map', 'children'),
-#     Input('map-checklist', 'value'),
-#     prevent_initial_call=True
-# )
-# def update_map(selected_layers):
-#     telegram = telegram_locations if 'telegram' in selected_layers else []
-#     geoconfirmed = geojson_data if 'geoconfirmed' in selected_layers else []
+@click.command()
+@click.option('--no-server', is_flag=True, help='Run the app without the servers for similarity search and RAG')
+def main(no_server):
 
-#     return generate_map(telegram, geoconfirmed)
+    if no_server:
+        logger.warning("""
+        The servers are off: similarity search and RAG are disabled.
+        To enable them, remove the flag '--no-server', update config.yaml with a GOOGLE_API_KEY and launch the two servers.\n
+        Check the instructions at https://github.com/Guepardow/telegram_feed_analyzer
+        """)
+
+    else:
+        # Connect to the servers
+        similarity_search.load_collection(host='localhost', port=8000)
+        rag.load_collection(host='localhost', port=8001)
+
+    app.run_server(debug=True)
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+
+    main()
 
 # uv run app.py
+# uv run app.py --no_server
