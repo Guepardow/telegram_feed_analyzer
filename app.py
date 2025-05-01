@@ -205,12 +205,6 @@ def sentiment_to_color(neg, neu, pos):
     return f"rgba({int(neg*255)}, {int(pos*255)}, 0, 1.0)"
 
 def render_message_html(message):
-    user_icon_url = './assets/user_r.png'
-    link_icon_url = './assets/link_r.png'
-    location_icon_url = './assets/location_r.png'
-    photo_icon_url = './assets/photo_r.png'
-    video_icon_url = './assets/video_r.png'
-    similar_icon_url = './assets/similar_r.png'
 
     url = f"https://t.me/{message['account']}/{message['id']}"
 
@@ -228,14 +222,14 @@ def render_message_html(message):
         <div style="display:flex;justify-content:space-between;align-items:center;">
 
             <div style="display:flex;align-items:center;position: relative;">
-                <img class="tooltiptext user-icon" src="{user_icon_url}" height="16" style="margin-right:5px;cursor:pointer;">
+                <img class="tooltiptext user-icon" src="./assets/user_r.png" height="16" style="margin-right:5px;cursor:pointer;">
                 <span class="hide" style="font-size: 10px; width: 140px; background-color: #c2c2c2; color: black; text-align: center; border-radius: 5px; padding: 5px; position: absolute; top: 1px; left: 30px;">Filter on user {message['account']}</span>
                 <span style="float:left;vertical-align:top;">{message['account']}</span>
             </div>
 
             <div style="display:flex;align-items:center;margin-left:auto;">
                 <a href="{url}" target="_blank">
-                    <img src="{link_icon_url}" height="16" style="margin-right:5px;">
+                    <img src="./assets/link_r.png" height="16" style="margin-right:5px;">
                 </a>
                 <span style="float:right;">{message['date']}</span>
             </div>
@@ -248,19 +242,19 @@ def render_message_html(message):
     if message.get('coords_genai'):
         for (lat, lon), geoloc in zip(message['coords_genai'], message['geolocs_genai']):
             html += f"""
-                <img src="{location_icon_url}" height="16" style="margin-right:5px;cursor:pointer;" title="{geoloc}" data-lat={lat} data-lon={lon} class="location-icon">
+                <img src="./assets/location_r.png" height="16" style="margin-right:5px;cursor:pointer;" title="{geoloc}" data-lat={lat} data-lon={lon} class="location-icon">
             """
 
     if message.get('has_photo'):
-        html += f'<img src="{photo_icon_url}" height="16" style="margin-right:5px;">'
+        html += '<img src="./assets/photo_r.png" height="16" style="margin-right:5px;">'
     
     if message.get('has_video'):
-        html += f'<img src="{video_icon_url}" height="16">'
+        html += '<img src="./assets/video_r.png" height="16">'
 
-    html += f"""
+    html += """
             </div>
             <div style="margin-left:auto;cursor:pointer;margin-right: 0;">
-                <img class="tooltiptext similar-icon" src="{similar_icon_url}" height="16" style="margin-right:-120px;cursor:pointer;">
+                <img class="tooltiptext similar-icon" src="./assets/similar_r.png" height="16" style="margin-right:-120px;cursor:pointer;">
                 <span class="hide" style="font-size: 10px; width: 140px; background-color: #c2c2c2; color: black; text-align: center; border-radius: 5px; padding: 5px; position: relative; top: 0px; right: 40px;">Search for similar messages</span>
             </div>
             
@@ -400,7 +394,7 @@ app.layout = dbc.Container([
                                     'padding': '10px', 'overflowY': 'auto'}
                             ),
                     id='loading-component', 
-                    style={'flex': 1, 'height': '83vh', 'backgroundColor': '#1f1f1f', 'borderRadius': '5px', 'padding': '10px', 'color': 'white'}),
+                    style={'flex': 1, 'height': '83vh', 'backgroundColor': '#1f1f1f', 'borderRadius': '5px', 'padding': '10px'}),
             ], style=CARD_STYLE)
         ], width=3, style={'padding-right': '0px'}),
 
@@ -458,9 +452,7 @@ def update_sentiment_chart(interval):
     prevent_initial_call=True
 )
 def reset_grid(n_clicks):
-
     return grid, False, {'width': '100%', 'border': 'none', 'borderRadius': '4px', 'margin-top': '8px', 'backgroundColor': 'grey'}
-
 
 @app.callback(
     Output('response-rag', 'children'),
@@ -470,7 +462,7 @@ def reset_grid(n_clicks):
 )
 def run_query(n_clicks, query):
     if not query:
-        return 'Please enter a query.'
+        return 'Please enter a question.'
     answer = rag.query(query=query, n_results=20)
     return dcc.Markdown([answer])
 
@@ -479,13 +471,14 @@ def run_query(n_clicks, query):
     Output('messages-dag', 'rowData', allow_duplicate=True),
     Output('reset-button', 'style'),
     Output('is_filtered', 'data'),
+    Output('map', 'center'),
+    Output('map', 'zoom'),
     Input('messages-dag', 'cellRendererData'),
     Input('is_filtered', 'data'),
     State('messages-dag', 'rowData'),
     prevent_initial_call=True
 )
 def update_grid(cellRendererData, is_filtered, current_row_data):
-    # TODO: reset call automatically this function
 
     style_common = {'width': '100%', 'border': 'none', 'borderRadius': '4px', 'margin-top': '8px'}
 
@@ -496,12 +489,10 @@ def update_grid(cellRendererData, is_filtered, current_row_data):
             filter_model = {'account': {'filterType': 'text', 'type': 'equals', 
                                         'filter': cellRendererData['value']['filterAccount']}}
 
-            return filter_model, dash.no_update, style_common | {'backgroundColor': '#4CAF50'}, True
+            return filter_model, dash.no_update, style_common | {'backgroundColor': '#4CAF50'}, True, dash.no_update, dash.no_update
 
         # Click to find similar messages
         elif ('showSimilar' in cellRendererData['value']) and (not is_filtered):
-            # TODO: slow compared to filterAccount: 500-700ms vs 100-200ms
-            # TODO: a sort is better, no ? faster and simpler
 
             # Format the message 
             idx = cellRendererData['rowIndex']
@@ -512,33 +503,17 @@ def update_grid(cellRendererData, is_filtered, current_row_data):
             results = similarity_search.query(query_message, n_results=100)
             indices = [int(mid) for mid in results['ids'][0]]
 
-            return dash.no_update, [current_row_data[i] for i in indices], style_common | {'backgroundColor': '#4CAF50'}, True
+            return dash.no_update, [current_row_data[i] for i in indices], style_common | {'backgroundColor': '#4CAF50'}, True, dash.no_update, dash.no_update
 
         elif 'zoomLoc' in cellRendererData['value']:
-            return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    # When we click on reset or if we try to filter again 
-    return dash.no_update, dash.no_update, dash.no_update, dash.no_update
-
-
-@app.callback(
-    Output('map', 'center'),
-    Output('map', 'zoom'),
-    Input('messages-dag', 'cellRendererData'),
-    prevent_initial_call=True
-)
-def zoom_to_marker(cellRendererData):
-    # TODO: this is super fast, but it calls another callback which is slow (100ms vs 3ms)
-
-    if cellRendererData and 'value' in cellRendererData:
-
-        if 'zoomLoc' in cellRendererData['value']:
             lat, lon, _ = cellRendererData['value']['zoomLoc']
             lat, lon = float(lat), float(lon)
 
-            return (lat, lon), 14
-    
-    return dash.no_update, dash.no_update
+            return dash.no_update, dash.no_update, dash.no_update, dash.no_update, (lat, lon), 14
+
+    # When we click on reset or if we try to filter again 
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
 @app.callback(
     Output('messages-dag', 'dashGridOptions'),
@@ -566,7 +541,7 @@ def main(no_server):
         similarity_search.load_collection(host='localhost', port=8000)
         rag.load_collection(host='localhost', port=8001)
 
-    app.run_server(debug=True)
+    app.run_server(debug=False)
 
 
 if __name__ == '__main__':

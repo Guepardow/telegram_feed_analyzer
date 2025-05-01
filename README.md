@@ -23,7 +23,7 @@ This project enhances Telegram feeds, using the Gemini AI API, by adding the fol
 📆 **News**:
 - *20-04-2024: this project was developed for the Kaggle competition [5-day Gen AI Intensive Course with Google](https://www.kaggle.com/competitions/gen-ai-intensive-course-capstone-2025q1).*
 
-# Installation
+# 1. Installation
 
 Main technology used: 
 <a href="https://www.python.org/"><img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/python.png" alt="Python" height="35px" style="vertical-align: middle;margin-left:15px;margin-right:25px"></a>
@@ -36,7 +36,7 @@ Main technology used:
 <a href="https://react.dev/">
 <img src="https://mehdimiah.com/blog/telegram_feed_analyzer/icon/react.png" alt="React" height="35px" style="vertical-align: middle;margin-right:25px"></a>
 
-## Setup
+## 1a. Setup
 This project uses `uv` as a project manager; you can [download it here](https://docs.astral.sh/uv/).
 
 ```sh
@@ -45,13 +45,13 @@ cd telegram_feed_analyzer
 uv sync 
 ```
 
-## Authentification
+## 1b. Authentification
 
 You must get a [Google API key here (for free)](https://aistudio.google.com/app/apikey). Then, update the file `config.yaml` with this key.
 
-[Optional] You can get a [Telethon API key here (for free)](https://docs.telethon.dev/en/stable/basic/signing-in.html). Then, update the file `config.yaml` with the keys.
+[Optional] You can get a [Telegram API key here (for free)](https://docs.telethon.dev/en/stable/basic/signing-in.html). Then, update the file `config.yaml` with the keys.
 
-# Data
+# 2. Data
 
 You can download 1987 "enhanced messages" posted on Telegram on March 31st, 2025 about the situation in Israel and Palestine:
 
@@ -59,7 +59,7 @@ You can download 1987 "enhanced messages" posted on Telegram on March 31st, 2025
 curl -q https://mehdimiah.com/blog/telegram_feed_analyzer/data/data_telegram_250331.json --output data/data_telegram_250331.json
 ```
 
-# Dash Dashboard
+# 3. Dash Dashboard
 
 Two modes are available with the dashboard: `normal mode` and `no-server mode`.
 
@@ -70,7 +70,7 @@ Two modes are available with the dashboard: `normal mode` and `no-server mode`.
 | Requirements    | 🗝️ Google API key |❗ No Google API key required |
 | Servers         | 🖥️ Need to build and launch databases |❗ No need to build or launch databases|
 
-## How to use the `normal mode`?
+## 3a. How to use the `normal mode`?
 
 First, create Persistent Chroma databases for the embeddings (for the tasks on semantic search and retrieval). The databases will be stored in `./data/.chroma`):
 
@@ -93,7 +93,7 @@ uv run chroma run --path ./data/.chroma/rag_db --host localhost --port 8001
 uv run app.py
 ```
 
-## How to use the `no-server mode`?
+## 3b. How to use the `no-server mode`?
 
 You can run a local Dash dashboard in a limited mode by running:
 
@@ -123,11 +123,11 @@ uv run app.py --no-server
   
 </details>
 
-# Analysis tools
+# 4. Analysis tools
 
 This project aims to provide some analysis tools directly on Telegram messages. You may need a Telegram account and get access to Telethon to run some of the following codes.
 
-## Multi-lingual translation, geolocation and sentiment analysis
+## 4a. Multi-lingual translation, geolocation and sentiment analysis
 
 With Gemini 2.0 Flash, run the analysis on a single post:
 ```bash
@@ -149,11 +149,12 @@ cd src ; uv run get_analysis.py --method gemini --post https://t.me/<account_nam
   
 </details>
 
-## Similar message search
+## 4b. Similar message search
 
 With Gemini 2.0 Flash:
 ```bash
-cd src ; uv run similarity_search.py  # if not already, build the Chroma database with the embeddings
+cd src
+uv run similarity_search.py  # if not already, build the Chroma database with the embeddings
 uv run chroma run --path ../data/.chroma/similarity_search_db --host localhost --port 8000  # terminal 1
 uv run similarity_search.py --query "A huge explosion was heard in Rafah" # terminal 2
 ```
@@ -174,11 +175,12 @@ uv run similarity_search.py --query "A huge explosion was heard in Rafah" # term
  ```
 </details>
 
-## Retrieval-Augmented Generation (RAG)
+## 4c. Retrieval-Augmented Generation (RAG)
 
 With Gemini 2.0 Flash:
 ```bash
-cd src ; uv run rag.py  # if not already, build the Chroma database with the embeddings
+cd src
+uv run rag.py  # if not already, build the Chroma database with the embeddings
 uv run chroma run --path ../data/.chroma/rag_db --host localhost --port 8001  # terminal 1
 uv run rag.py --query "What happened in Rafah?"  # terminal 2
 ```

@@ -1,6 +1,6 @@
 [project]
 name = "telegram-feed-analyzer"
-version = "0.5.4"
+version = "0.5.5"
 description = "Using Generative AI on Telegram for Crisis Reporting"
 readme = "README.md"
 requires-python = ">=3.10"
