@@ -64,68 +64,84 @@ similarity_search = SimilaritySearch(GOOGLE_API_KEY=GOOGLE_API_KEY)
 similarity_search.load_collection(host='localhost', port=8000)
 
 # --- Map ---
-def generate_map(telegram_locations, geoconfirmed_locations):
+def generate_map(messages, geoconfirmed_locations):
 
-    locations = []
+    # Markers for Telegram (blue) and Geoconfirmed (red)
+    blue_icon = dict(iconUrl='./assets/marker-icon-blue.png', iconSize=(24,36), iconAnchor=(12, 18))
+    red_icon = dict(iconUrl='./assets/marker-icon-red.png', iconSize=(24,36),iconAnchor=(12, 18))
 
-    for loc in telegram_locations:
+    # Extract the markers of a single Telegram message
+    def get_telegram_markers(message):
+        """
+        Return the list of Markers of all the locations mentioned in a message
+        """
+        account, date = message['account'], message['date']
+        url = f"https://t.me/{account}/{message['id']}"
+        text = message['text_english_genai']
 
-        account, date = messages[loc['mid']]['account'], messages[loc['mid']]['date']
-        url = f"https://t.me/{account}/{messages[loc['mid']]['id']}"
-        text = messages[loc['mid']]['text_english_genai']
-        lat, lon = loc['coords']
-
-        tooltip = html.Div([
-            html.Div([
-                html.Span(account, style={'float': 'left', 'paddingLeft': '3px'}),
-                html.Span(date, style={'float': 'right', 'paddingRight': '3px'})
-            ], style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center'}),
-            html.Div(text, style={'marginTop': '2px', 'padding': '3px'})
-        ], style={'whiteSpace': 'normal', 'width': '300px', 'borderRadius': '8px'})            
-
-        locations.append({'lat': lat+ np.random.uniform(-1e-4, 1e-4), 'lon': lon+ np.random.uniform(-1e-4, 1e-4),  # Add noise to avoid overlapping markers
-        'tooltip': tooltip, 'popup': html.A(url, href=url, target='_blank'), 'icon': dict(
-                    iconUrl='./assets/marker-icon-blue.png',
-                    iconSize=(24,36),
-                    iconAnchor=(12, 18)
-                    )})
-
-    if geoconfirmed_locations:
-        for loc in geoconfirmed_locations['features']:
-
-            lon, lat = loc['geometry']['coordinates']
-            sources = loc['properties']['sources']
-            description = loc['properties']['description']
+        markers = []
+        for geoloc, coords in zip(message['geolocs_genai'], message['coords_genai']):
+            lat, lon = coords
 
             tooltip = html.Div([
-                html.Div(description, style={'marginTop': '2px', 'padding': '3px'})
-            ], style={'whiteSpace': 'normal', 'width': '300px', 'borderRadius': '8px'})
+                html.Div([
+                    html.Span(account, style={'float': 'left', 'paddingLeft': '3px'}),
+                    html.Span(date, style={'float': 'right', 'paddingRight': '3px'})
+                    ], style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center'}),
+                    html.Div(text, style={'marginTop': '2px', 'padding': '3px'})
+                    ], style={'whiteSpace': 'normal', 'width': '300px', 'borderRadius': '8px'})  
 
-            locations.append({
-                'lat': lat, 'lon': lon, 
-                'icon': dict(
-                    iconUrl='./assets/marker-icon-red.png',
-                    iconSize=(24,36),
-                    iconAnchor=(12, 18)
-                    ),
-                    'tooltip': tooltip, 
-                    'popup': html.Div([html.A(source, href=source, target='_blank') for source in sources])
-            })
+            markers.append(dl.Marker(
+                position=(lat + np.random.uniform(-1e-4, 1e-4), lon + np.random.uniform(-1e-4, 1e-4)),  # Add noise to avoid overlapping markers
+                children=[dl.Tooltip(tooltip), dl.Popup(html.A(url, href=url, target='_blank'))],
+                icon=blue_icon))
+
+        return markers
+
+    # Extract the marker of a single Geoconfirmed post
+    def get_geoconfirmed_markers(loc):
+        """
+        Return a Marker of the location mentionned in an post of Geoconfirmed
+        """
+
+        lon, lat = loc['geometry']['coordinates']
+        sources = loc['properties']['sources']
+        description = loc['properties']['description']
+
+        tooltip = html.Div([
+            html.Div(description, style={'marginTop': '2px', 'padding': '3px'})
+        ], style={'whiteSpace': 'normal', 'width': '300px', 'borderRadius': '8px'})
+
+        popup = html.Div([html.A(source, href=source, target='_blank') for source in sources])
+
+        return dl.Marker(
+            position=(lat, lon),
+            children=[dl.Tooltip(tooltip), dl.Popup(popup)],
+            icon=red_icon)
+
+    # Extract all markers from all Telegram messages
+    markers_telegram = [get_telegram_markers(message) for message in messages]
+    markers_telegram = [marker for markers in markers_telegram for marker in markers]
+
+    # Extract all markers from all Geoconfirmed posts
+    markers_geoconfirmed = [get_geoconfirmed_markers(loc) for loc in geoconfirmed_locations['features']]
 
     # Create the map
-    m =  dl.Map(center=(32, 35), zoom=8, children=[
-
-        dl.TileLayer(url='https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
-            attribution='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'),
-
-        *[dl.Marker(position=(loc['lat'], loc['lon']),
-                    children=[
-                        dl.Tooltip(loc['tooltip']),
-                        dl.Popup(loc['popup'])
-                        ],
-                    icon=loc['icon']
-                    ) for loc in locations]
-    ], style={'width': '100%', 'height': '100%'}, id='map')
+    m = dl.Map(
+        [
+            dl.TileLayer(
+                url='https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
+                attribution='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'),
+            dl.LayersControl([
+                dl.Overlay(dl.LayerGroup(markers_telegram), name='Telegram', checked=True),
+                dl.Overlay(dl.LayerGroup(markers_geoconfirmed), name='Geoconfirmed', checked=True),
+            ], id='lc', collapsed=False)
+        ],
+        center=(32, 35),
+        zoom=8,
+        style={'width': '100%', 'height': '100%'},
+        id='map',
+    )
 
     return m
 
@@ -394,19 +410,19 @@ app.layout = dbc.Container([
         # Right Column - Map and Sentiment Chart
         dbc.Col([
             dbc.Card([
-                html.Div(children=generate_map(telegram_locations, None), style={'flex': 1, 'height': '50vh', 'backgroundColor': '#1f1f1f', 'borderRadius': '5px', 'padding': '0px', 'marginBottom': '10px'}),
+                html.Div(children=generate_map(messages, geojson_data), style={'flex': 1, 'height': '50vh', 'backgroundColor': '#1f1f1f', 'borderRadius': '5px', 'padding': '0px', 'marginBottom': '10px'}),
 
-                dcc.Checklist(
-                    id='map-checklist',
-                    options=[
-                        {'label': 'Telegram', 'value': 'telegram'},
-                        {'label': 'Geoconfirmed', 'value': 'geoconfirmed'}],
-                        value=['telegram'],
-                        inputStyle={'margin-right': '5px'},
-                        style={'position': 'absolute', 'top': '0px', 'right': '0px', 'z-index': '1000', 
-                        'backgroundColor': '#3c3c3c', 'color': '#ffffff', 'borderRadius': '8px', 
-                        'padding-left': '12px', 'padding-right': '20px', 'padding-top': '16px', 'padding-bottom': '8px'}
-                        ),
+                # dcc.Checklist(
+                #     id='map-checklist',
+                #     options=[
+                #         {'label': 'Telegram', 'value': 'telegram'},
+                #         {'label': 'Geoconfirmed', 'value': 'geoconfirmed'}],
+                #         value=['telegram'],
+                #         inputStyle={'margin-right': '5px'},
+                #         style={'position': 'absolute', 'top': '0px', 'right': '0px', 'z-index': '1000', 
+                #         'backgroundColor': '#3c3c3c', 'color': '#ffffff', 'borderRadius': '8px', 
+                #         'padding-left': '12px', 'padding-right': '20px', 'padding-top': '16px', 'padding-bottom': '8px'}
+                #         ),
                 
                 dcc.Graph(id='sentiment-chart', figure=generate_chart(df_long, '30min'), style={'height': '33vh'}),
 
@@ -537,7 +553,7 @@ def zoom_to_marker(cellRendererData):
 
             return (lat, lon), 14
     
-    return dash.no_update
+    return dash.no_update, dash.no_update
 
 @app.callback(
     Output('messages-dag', 'dashGridOptions'),
@@ -549,16 +565,16 @@ def update_filter(filter_value):
     newFilter['quickFilterText'] = filter_value
     return newFilter
 
-@app.callback(
-    Output('map', 'children'),
-    Input('map-checklist', 'value'),
-    prevent_initial_call=True
-)
-def update_map(selected_layers):
-    telegram = telegram_locations if 'telegram' in selected_layers else []
-    geoconfirmed = geojson_data if 'geoconfirmed' in selected_layers else []
+# @app.callback(
+#     Output('map', 'children'),
+#     Input('map-checklist', 'value'),
+#     prevent_initial_call=True
+# )
+# def update_map(selected_layers):
+#     telegram = telegram_locations if 'telegram' in selected_layers else []
+#     geoconfirmed = geojson_data if 'geoconfirmed' in selected_layers else []
 
-    return generate_map(telegram, geoconfirmed)
+#     return generate_map(telegram, geoconfirmed)
 
 
 if __name__ == '__main__':
