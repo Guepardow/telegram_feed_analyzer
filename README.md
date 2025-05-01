@@ -42,7 +42,8 @@ This project uses `uv` as a project manager; you can [download it here](https://
 ```sh
 git clone https://github.com/Guepardow/telegram_feed_analyzer
 cd telegram_feed_analyzer
-uv sync  # (or if you use pip) pip install -r requirements.txt
+uv sync  # (or if you use pip: pip install -r requirements.txt)
+# If you are not using uv, you need to adapt some lines of code below
 ```
 
 ## Authentification
