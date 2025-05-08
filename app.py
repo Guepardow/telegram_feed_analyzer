@@ -1,19 +1,25 @@
+import os
 import json
 import yaml
 import click
-import numpy as np
 import pandas as pd
 from loguru import logger
+from datetime import datetime, timedelta
 
 import dash
-from dash import dcc, html, Input, Output, State, Patch
-import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
-import dash_leaflet as dl
-import plotly.express as px
+from dash import dcc, html, Input, Output, State, Patch
 
 from src.rag import RAG
 from src.similarity_search import SimilaritySearch
+
+from src.app.grid import render_message_html, generate_grid
+from src.app.map import get_locations, generate_map
+from src.app.chart import precompute_df_sentiment, generate_chart
+
+# --- List of datamaps ---
+
+list_datamaps = [f for f in os.listdir('./data/datamaps') if os.path.isdir(os.path.join('./data/datamaps', f))]
 
 # --- Geoconfirmed ---
 
@@ -36,19 +42,8 @@ geojson_data = {
     ]
 }
 
-# --- Telegram message data ---
-with open('./data/data_telegram_250331.json', 'r', encoding='utf-8') as f:
-    messages = json.load(f)
-
-# --- Locations --
-
-def get_locations(messages: list[dict]) -> list[dict]:
-    locations = []
-    for mid, message in enumerate(messages):
-        for geoloc, coords in zip(message['geolocs_genai'], message['coords_genai']):
-            locations.append({'mid': mid, 'geoloc': geoloc, 'coords': coords})
-
-    return locations
+with open('./data/datamaps/syria_241125-241215/telegram_baseline.json', 'r', encoding='utf-8') as f:
+    messages = json.load(f)[:100]
 
 telegram_locations = get_locations(messages)
 
@@ -60,244 +55,12 @@ with open('./config.yaml') as f:
 rag = RAG(GOOGLE_API_KEY=GOOGLE_API_KEY)
 similarity_search = SimilaritySearch(GOOGLE_API_KEY=GOOGLE_API_KEY)
 
-# --- Map ---
-def generate_map(messages, geoconfirmed_locations):
-
-    # Markers for Telegram (blue) and Geoconfirmed (red)
-    blue_icon = dict(iconUrl='./assets/marker-icon-blue.png', iconSize=(24,36), iconAnchor=(12, 18))
-    red_icon = dict(iconUrl='./assets/marker-icon-red.png', iconSize=(24,36),iconAnchor=(12, 18))
-
-    # Extract the markers of a single Telegram message
-    def get_telegram_markers(message):
-        """
-        Return the list of Markers of all the locations mentioned in a message
-        """
-        account, date = message['account'], message['date']
-        url = f"https://t.me/{account}/{message['id']}"
-        text = message['text_english_genai']
-
-        markers = []
-        for geoloc, coords in zip(message['geolocs_genai'], message['coords_genai']):
-            lat, lon = coords
-
-            tooltip = html.Div([
-                html.Div([
-                    html.Span(account, style={'float': 'left', 'paddingLeft': '3px'}),
-                    html.Span(date, style={'float': 'right', 'paddingRight': '3px'})
-                    ], style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center'}),
-                    html.Div(text, style={'marginTop': '2px', 'padding': '3px'})
-                    ], style={'whiteSpace': 'normal', 'width': '300px', 'borderRadius': '8px'})  
-
-            markers.append(dl.Marker(
-                position=(lat + np.random.uniform(-1e-4, 1e-4), lon + np.random.uniform(-1e-4, 1e-4)),  # Add noise to avoid overlapping markers
-                children=[dl.Tooltip(tooltip), dl.Popup(html.A(url, href=url, target='_blank'))],
-                icon=blue_icon))
-
-        return markers
-
-    # Extract the marker of a single Geoconfirmed post
-    def get_geoconfirmed_markers(loc):
-        """
-        Return a Marker of the location mentionned in an post of Geoconfirmed
-        """
-
-        lon, lat = loc['geometry']['coordinates']
-        sources = loc['properties']['sources']
-        description = loc['properties']['description']
-
-        tooltip = html.Div([
-            html.Div(description, style={'marginTop': '2px', 'padding': '3px'})
-        ], style={'whiteSpace': 'normal', 'width': '300px', 'borderRadius': '8px'})
-
-        popup = html.Div([html.A(source, href=source, target='_blank') for source in sources])
-
-        return dl.Marker(
-            position=(lat, lon),
-            children=[dl.Tooltip(tooltip), dl.Popup(popup)],
-            icon=red_icon)
-
-    # Extract all markers from all Telegram messages
-    markers_telegram = [get_telegram_markers(message) for message in messages]
-    markers_telegram = [marker for markers in markers_telegram for marker in markers]
-
-    # Extract all markers from all Geoconfirmed posts
-    markers_geoconfirmed = [get_geoconfirmed_markers(loc) for loc in geoconfirmed_locations['features']]
-
-    # Create the map
-    m = dl.Map(
-        [
-            dl.TileLayer(
-                url='https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
-                attribution='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'),
-            dl.LayersControl([
-                dl.Overlay(dl.LayerGroup(markers_telegram), name='Telegram', checked=True),
-                dl.Overlay(dl.LayerGroup(markers_geoconfirmed), name='Geoconfirmed', checked=True),
-            ], id='lc', collapsed=False)
-        ],
-        center=(32, 35),
-        zoom=8,
-        style={'width': '100%', 'height': '100%'},
-        id='map',
-    )
-
-    return m
-
-# --- Sentiment chart ---
-
-def precompute_df_sentiment(messages):
-    df = pd.DataFrame(messages)
-    df['date'] = pd.to_datetime(df['date'])
-    df['date_r'] = df['date'].dt.round('5min')  # Round to the most precise interval: 5 minutes
-    # so it will be faster to regroup the data and regenerate the chart
-
-    # Rename column of sentiment
-    df = df.rename(columns={'negative_genai': 'negative', 'neutral_genai': 'neutral', 'positive_genai': 'positive'})
-
-    # Get the dominant sentiment for each message
-    df['dominant_sentiment'] = df[['negative', 'neutral', 'positive']].idxmax(axis=1)
-
-    grouped = df.groupby(['date_r', 'dominant_sentiment']).size().unstack(fill_value=0).reset_index()
-    df_long = pd.melt(grouped, id_vars=['date_r'], var_name='sentiment', value_name='count')
-
-    return df_long
-
 df_long = precompute_df_sentiment(messages)
-
-def generate_chart(df_long, interval):
-
-    df_interval = df_long.copy()
-    df_interval['date_r'] = df_interval['date_r'].dt.round(interval)
-
-    # Sum the counts for each interval
-    df_interval = df_interval.groupby(['date_r', 'sentiment']).sum().reset_index()
-
-    fig = px.bar(df_interval, x='date_r', y='count', color='sentiment',
-                 color_discrete_map={'neutral': '#eeeeee', 'negative': '#e74c3c', 'positive': '#2ecc71'},
-                 labels={'date_r': '', 'count': 'Number of messages'})
-
-    # Update the layout for dark background
-    fig.update_layout(
-        plot_bgcolor='#1f1f1f',  
-        paper_bgcolor='#1f1f1f',
-        font=dict(color='white'),
-        yaxis=dict(gridcolor='gray'),
-        title_text='Evolution of dominant sentiment', 
-        title_x=0.5,
-
-        # Update the legend
-        legend=dict(
-            orientation='h',  # Horizontal orientation
-            yanchor='bottom', # Align to the bottom
-            y=-0.45,  # Adjust vertical position
-            xanchor='center', # Center the legend
-            x=0.2,     # Place legend in the center horizontally
-            bgcolor='rgba(0,0,0,0)'  # Transparent background for the legend
-        )
-    )
-
-    return fig
-
-# --- Message feed ---
-
-def sentiment_to_color(neg, neu, pos):
-    if neu > max(neg, pos):
-        return 'rgba(255,255,255,1.0)'
-    return f"rgba({int(neg*255)}, {int(pos*255)}, 0, 1.0)"
-
-def render_message_html(message):
-
-    url = f"https://t.me/{message['account']}/{message['id']}"
-
-    color_sentiment = sentiment_to_color(neg=message['negative_genai'], neu=message['neutral_genai'], pos=message['positive_genai'])
-
-    # Start HTML string
-    html = f"""
-    <style>
-        .tooltiptext:hover +.hide {{visibility: visible;}}
-	    .hide {{visibility: hidden;}}
-
-    </style>
-
-    <div style="background-color:#2c2c2c;border-left:5px solid {color_sentiment};padding:10px;margin-bottom:8px;margin-right:8px;border-radius:4px;color:white;">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-
-            <div style="display:flex;align-items:center;position: relative;">
-                <img class="tooltiptext user-icon" src="./assets/user_r.png" height="16" style="margin-right:5px;cursor:pointer;">
-                <span class="hide" style="font-size: 10px; width: 140px; background-color: #c2c2c2; color: black; text-align: center; border-radius: 5px; padding: 5px; position: absolute; top: 1px; left: 30px;">Filter on user {message['account']}</span>
-                <span style="float:left;vertical-align:top;">{message['account']}</span>
-            </div>
-
-            <div style="display:flex;align-items:center;margin-left:auto;">
-                <a href="{url}" target="_blank">
-                    <img src="./assets/link_r.png" height="16" style="margin-right:5px;">
-                </a>
-                <span style="float:right;">{message['date']}</span>
-            </div>
-        </div>
-        <div style="margin-top:5px;margin-bottom:5px;">{message['text_english_genai']}</div>
-        <div style="display:flex;gap:5px;">
-            <div style="display:flex;align-items:center;">
-    """
-
-    if message.get('coords_genai'):
-        for (lat, lon), geoloc in zip(message['coords_genai'], message['geolocs_genai']):
-            html += f"""
-                <img src="./assets/location_r.png" height="16" style="margin-right:5px;cursor:pointer;" title="{geoloc}" data-lat={lat} data-lon={lon} class="location-icon">
-            """
-
-    if message.get('has_photo'):
-        html += '<img src="./assets/photo_r.png" height="16" style="margin-right:5px;">'
-    
-    if message.get('has_video'):
-        html += '<img src="./assets/video_r.png" height="16">'
-
-    html += """
-            </div>
-            <div style="margin-left:auto;cursor:pointer;margin-right: 0;">
-                <img class="tooltiptext similar-icon" src="./assets/similar_r.png" height="16" style="margin-right:-120px;cursor:pointer;">
-                <span class="hide" style="font-size: 10px; width: 140px; background-color: #c2c2c2; color: black; text-align: center; border-radius: 5px; padding: 5px; position: relative; top: 0px; right: 40px;">Search for similar messages</span>
-            </div>
-            
-        </div>
-    </div>
-    """
-
-    return html
 
 for idx, msg in enumerate(messages):
     msg['message_html'] = render_message_html(msg)
 
 df = pd.DataFrame(messages)
-
-def generate_grid(messages):
-
-    columnDefs = [
-    {'field': 'message_html', 'cellRenderer': 'RenderHTML'},
-    {'field': 'account', 'hide': True},  # Invisible column
-    {'field': 'sim', 'hide': True}
-    ]
-
-    grid = dag.AgGrid(
-        id='messages-dag',
-        columnDefs=columnDefs,
-        rowData=messages,
-        columnSize='responsiveSizeToFit',
-        dashGridOptions={
-            'headerHeight':0, 
-            'rowStyle': { 'border': 'none'},
-            'suppressCellFocus': True
-            },
-        style={'height': '100%', 'width': '100%'},
-        className='no-border-grid',
-        defaultColDef={
-            'sortable': True, 'filter': True,
-            'cellStyle': {'backgroundColor': '#3c3c3c', 'color': 'white', 'padding': '0px'},
-            'wrapText': True,  # Ensure text wraps within the cell
-            'autoHeight': True  # Automatically adjust the height of the row based on content
-        }
-    )
-
-    return grid
 
 grid = generate_grid(messages)
 
@@ -315,52 +78,93 @@ app.layout = dbc.Container([
 
     # Header
     dbc.Row([
-        dbc.Col(html.Div('Telegram Feed Analyzer', 
-        style={'fontFamily': 'monospace', 'fontSize': '24px', 'marginTop': '8px', 'marginLeft': '8px', 'marginBottom': '-4px','color': '#ffffff'})
+        dbc.Col(
+            html.Div(
+                [
+                    html.Div('Telegram Feed Analyzer',
+                        style={'fontFamily': 'monospace', 'fontSize': '24px', 'marginTop': '8px',
+                            'marginLeft': '8px', 'marginBottom': '-4px','color': '#ffffff'}),
+                    html.Img(src="https://fonts.gstatic.com/s/e/notoemoji/latest/1f30d/512.gif", width=32, height=32, 
+                        style={'marginLeft': '8px'})
+                ],
+                className='d-flex align-items-center',
+                style={'margin-top': '8px'}, 
+            ), width=4,
+        ),   
+
+        dbc.Col(
+            html.Div(
+                [
+                    html.Div('🗺️', className='pr-2', style={'fontSize': '25px'}),
+                    dcc.Dropdown(
+                        id='map-input',
+                        options=[{'label': label, 'value': label} for label in list_datamaps],
+                        placeholder='Select a datamap',
+                        className='dark-theme-dropdown',
+                        style={'width': '90%'}
+                    )
+                ],
+                className='d-flex align-items-center',
+                style={'margin-top': '8px'},
+            ), width=3,
+        ),
+
+        dbc.Col(
+            html.Div(
+                [
+                    html.Div('📆', className='pr-2', style={'fontSize': '25px'}),
+                    html.Button('\u27f3', id='reset-date', title='Reset date', style={'margin-right': '4px', 'margin-left': '4px', 'paddingLeft': '8px', 'paddingRight': '8px', 'borderRadius': '4px'}),
+                    html.Button('-', id='decrease-date', title='Substract 6 hours', n_clicks=0, style={'margin-right': '4px', 'margin-left': '4px', 'paddingLeft': '8px', 'paddingRight': '8px', 'borderRadius': '4px', 'fontFamily': 'monospace'}),
+                    dcc.Input(
+                        id='date-input',
+                        type='text',
+                        placeholder='Waiting for a map-database',
+                        readOnly=False,  # TODO: check if any error
+                        className='text-center bg-black text-white',
+                        style={'width': '90%', 'border': '1px solid #333', 'borderRadius': '4px', 'paddingTop': '6px', 'paddingBottom': '6px'}
+                    ),
+                    html.Button('+', id='increase-date', title='Add 6 hours', n_clicks=0, style={'margin-right': '4px', 'margin-left': '4px', 'paddingLeft': '8px', 'paddingRight': '8px', 'borderRadius': '4px', 'fontFamily': 'monospace'}),
+                ],
+                className='d-flex align-items-center',
+                style={'margin-top': '8px'},
+            ), width=3,
+        ),
+
+        dbc.Col(
+            html.Div(
+                [
+                    html.Div('⌛', className='pr-2', style={'fontSize': '25px'}),
+                    dcc.Dropdown(
+                        id='duration-input',
+                        options=[{'label': f'{n}h', 'value': n} for n in [6, 12, 24, 48]],
+                        value=24,
+                        placeholder='Select a duration',
+                        className='dark-theme-dropdown',
+                        style={'width': '90%'}
+                    )
+                ],
+                className='d-flex align-items-center',
+                style={'margin-top': '8px'},
+            ), width=1, 
+        ),
+
+        dbc.Col(
+            html.Div([html.Button('?', id='info', style={'margin-right': '4px', 'margin-left': '4px', 'paddingLeft': '8px', 'paddingRight': '8px', 'border': '1px solid #333', 'borderRadius': '16px'})],
+                style={'margin-top': '12px'}
+            ), width=1,
         )
-    ], justify='center'),
+
+    ]),
 
     # Horizontal rule
+    html.P(id='messages-stat', style={'fontSize': '12px', 'marginLeft': '8px','fontFamily': 'monospace'}),
+    dcc.Store(id='messages'),
+    dcc.Store(id='messages-dag-init'),
+    dcc.Store(id='telegram_locations'),
+    dcc.Store(id='geoconfirmed_locations'),
+    dcc.Store(id='json_sentiment'),
     dcc.Store(id='is_filtered', data=False),
-    html.Hr(),
-
-    # dbc.Row([
-    #     dbc.Col([
-    #         dbc.Row([
-    #             dbc.Col([
-    #                 html.Label('Date (UTC)', style=LABEL_STYLE),
-    #                 dcc.DatePickerSingle(
-    #                     id='date-picker',
-    #                     date='2025-12-31',
-    #                     style={'width': '100%'}
-    #                 )
-    #             ], width=4),
-    #             dbc.Col([
-    #                 html.Label('Duration', style=LABEL_STYLE),
-    #                 dcc.Dropdown(
-    #                     id='duration-dropdown',
-    #                     options=[
-    #                         {'label': '24h', 'value': '24h'},
-    #                         {'label': '4h', 'value': '4h'},
-    #                         {'label': '30min', 'value': '30min'},
-    #                         {'label': '5min', 'value': '5min'},
-    #                     ],
-    #                     value='24h',
-    #                     clearable=False,
-    #                 )
-    #             ], width=4),
-    #             dbc.Col([
-    #                 html.Label('Account', style=LABEL_STYLE),
-    #                 dcc.Dropdown(
-    #                     id='account-dropdown',
-    #                     options=[{'label': 'account_name_1', 'value': 'account_name_1'}],
-    #                     value='account_name_1',
-    #                     clearable=False,
-    #                 )
-    #             ], width=4)
-    #         ])
-    #     ], width=12)
-    # ], className='mb-2'),
+    html.Hr(style={'marginTop': '8px','marginBottom': '16px'}),
 
     # Main Content
     dbc.Row([
@@ -425,6 +229,50 @@ app.layout = dbc.Container([
 ], fluid=True)
 
 # --- Callbacks ---
+
+@app.callback(
+    Output('date-input', 'value'),
+    Input('reset-date', 'n_clicks'),
+    Input('map-input', 'value'),
+    prevent_initial_call=False
+)
+def reset_date(n_clicks, map_name):
+    """
+    Reset the date to the initial date if the button 'reset' is clicked
+    or if the map-database changes
+    """
+
+    if map_name:
+        with open(os.path.join('./data/datamaps', map_name, 'map-config.yaml')) as f:
+            map_config = yaml.safe_load(f)
+
+        map_date_start = map_config['date']['start']
+        map_date_start = datetime.strptime(map_date_start, '%Y-%m-%d %H:%M:%S')
+        map_date_start = map_date_start.strftime('%Y-%m-%d %H:%M')
+
+        return map_date_start
+
+@app.callback(
+    Output('date-input', 'value', allow_duplicate=True),
+    Input('increase-date', 'n_clicks'),
+    Input('decrease-date', 'n_clicks'),
+    State('date-input', 'value'),
+    prevent_initial_call=True
+)
+def update_date(increase_clicks, decrease_clicks, current_date):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return current_date
+
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    date_obj = datetime.strptime(current_date, '%Y-%m-%d %H:%M')
+
+    if button_id == 'increase-date':
+        date_obj += timedelta(hours=6)
+    elif button_id == 'decrease-date':
+        date_obj -= timedelta(hours=6)
+
+    return date_obj.strftime('%Y-%m-%d %H:%M')
 
 @app.callback(
     Output('run-button', 'style'),
@@ -496,7 +344,7 @@ def update_grid(cellRendererData, is_filtered, current_row_data):
 
             # Format the message 
             idx = cellRendererData['rowIndex']
-            message, date = messages[idx]['text_english_genai'],  messages[idx]['date']
+            message, date = messages[idx]['text_english'],  messages[idx]['date']
             query_message = f"[Date: {date}] {message}"
 
             # Search for the top k
@@ -531,9 +379,9 @@ def main(no_server):
 
     if no_server:
         logger.warning("""
-        The servers are off: similarity search and RAG are disabled.
-        To enable them, remove the flag '--no-server', update config.yaml with a GOOGLE_API_KEY and launch the two servers.\n
-        Check the instructions at https://github.com/Guepardow/telegram_feed_analyzer
+        Servers are off: similarity search and RAG are disabled.
+        To enable them, remove the flag '--no-server', update config.yaml with a GOOGLE_API_KEY and start both servers.\n
+        See instructions at https://github.com/Guepardow/telegram_feed_analyzer
         """)
 
     else:
@@ -541,7 +389,7 @@ def main(no_server):
         similarity_search.load_collection(host='localhost', port=8000)
         rag.load_collection(host='localhost', port=8001)
 
-    app.run_server(debug=False)
+    app.run_server(debug=True)
 
 
 if __name__ == '__main__':

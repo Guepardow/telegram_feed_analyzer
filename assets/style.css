@@ -1,0 +1,16 @@
+/* Style the dropdown container */
+.dark-theme-dropdown .Select-control {
+    background-color: black;
+    border: 1px solid #333;
+}
+
+/* Style the dropdown menu */
+.dark-theme-dropdown .Select-menu-outer {
+    background-color: black;
+    color: white !important;
+    border: 1px solid #333;
+}
+
+.dark-theme-dropdown .Select-value-label {
+    color: white !important;
+}
