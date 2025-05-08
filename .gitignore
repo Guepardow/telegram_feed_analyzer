@@ -10,13 +10,18 @@ wheels/
 .venv
 
 # Data
+!data/README.md
 data/
+
+# Evaluation data and results
+evaluation/data/
+evaluation/results/
 
 # API keys and custom config
 config.yaml
 
-# Logs
+# Logs from ChromaDB
 *.log
 
-# Session
+# Session from Telegram
 *.session

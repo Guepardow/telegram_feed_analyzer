@@ -131,14 +131,14 @@ This project aims to provide some analysis tools directly on Telegram messages. 
 
 With Gemini 2.0 Flash, run the analysis on a single post:
 ```bash
-cd src ; uv run get_analysis.py --method gemini --post https://t.me/<account_name>/<message_id>
+cd src/gemini ; uv run analyze_post.py --post https://t.me/<account_name>/<message_id>
 ```
 
 <details>
   <summary>Example</summary>
   
  ```sh
- uv run get_analysis.py --method gemini --post https://t.me/hamza20300/336071
+ uv run analyze_post.py --post https://t.me/hamza20300/336071
 
  # Outputs:
 
@@ -154,8 +154,8 @@ cd src ; uv run get_analysis.py --method gemini --post https://t.me/<account_nam
 With Gemini 2.0 Flash:
 ```bash
 cd src
-uv run similarity_search.py  # if not already, build the Chroma database with the embeddings
-uv run chroma run --path ../data/.chroma/similarity_search_db --host localhost --port 8000  # terminal 1
+uv run similarity_search.py --datamap sample  # if not already, build the Chroma database with the embeddings
+uv run chroma run --path ../data/datamaps/sample/.chroma/similarity_search_db --host localhost --port 8000  # terminal 1
 uv run similarity_search.py --query "A huge explosion was heard in Rafah" # terminal 2
 ```
 
@@ -180,8 +180,8 @@ uv run similarity_search.py --query "A huge explosion was heard in Rafah" # term
 With Gemini 2.0 Flash:
 ```bash
 cd src
-uv run rag.py  # if not already, build the Chroma database with the embeddings
-uv run chroma run --path ../data/.chroma/rag_db --host localhost --port 8001  # terminal 1
+uv run rag.py --datamap sample  # if not already, build the Chroma database with the embeddings
+uv run chroma run --path ../data/datamaps/sample/.chroma/rag_db --host localhost --port 8001  # terminal 1
 uv run rag.py --query "What happened in Rafah?"  # terminal 2
 ```
 

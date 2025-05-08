@@ -1,6 +1,6 @@
 [project]
 name = "telegram-feed-analyzer"
-version = "0.5.5"
+version = "0.6.0"
 description = "Using Generative AI on Telegram for Crisis Reporting"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,13 +20,3 @@ dependencies = [
     "telethon>=1.40.0",
     "tqdm>=4.67.1",
 ]
-
-[dependency-groups]
-dev = [
-    "ipykernel>=6.29.5",
-]
-
-[[tool.uv.index]]
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
-explicit = true
