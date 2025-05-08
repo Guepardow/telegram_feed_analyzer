@@ -1,0 +1,27 @@
+[project]
+name = "telegram-feed-analyzer-baseline"
+version = "0.6.0"
+requires-python = ">=3.10"
+dependencies = [
+    "chromadb>=1.0.8",
+    "geopy>=2.4.1",
+    "googletrans>=4.0.2",
+    "langid>=1.1.6",
+    "loguru>=0.7.3",
+    "sacremoses>=0.1.1",
+    "scipy>=1.15.2",
+    "sentencepiece>=0.2.0",
+    "telethon>=1.40.0",
+    "torch>=2.6.0",
+    "transformers>=4.51.3",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu124", marker = "sys_platform == 'linux' or sys_platform == 'win32'"},
+]

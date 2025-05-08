@@ -1,3 +1,4 @@
+import os
 import yaml
 import json
 import click
@@ -68,7 +69,7 @@ class RAG:
             end = min(start + batch_size, len(documents))
             self.collection.add(documents=documents[start:end], ids=[str(i) for i in range(start, end)])
 
-    def query(self, query, n_results):
+    def query(self, query, n_results, model_google='gemini-2.0-flash'):
         result = self.collection.query(query_texts=query, n_results=n_results)
 
         [all_passages] = result["documents"]
@@ -91,29 +92,29 @@ class RAG:
             prompt += f"PASSAGE: {passage_oneline}\n"
 
         answer = self.genai_client.models.generate_content(
-            model="gemini-2.0-flash",
+            model=model_google,
             contents=prompt,
             config=types.GenerateContentConfig(temperature=0.1)
         )
         return answer.text
 
 
-def build_database():
+def build_database(datamap: str):
 
     # Get the API key from the config file
-    with open("../config.yaml") as f:
+    with open("../../config.yaml") as f:
         config = yaml.safe_load(f)
         GOOGLE_API_KEY = config['secret_keys']['google']['api_key']
 
     # Initialize the RAG system
     rag = RAG(GOOGLE_API_KEY=GOOGLE_API_KEY)
-    rag.create_collection(persist_directory="../data/.chroma/rag_db")
+    rag.create_collection(persist_directory=os.path.join('../../data/datamaps', datamap, '.chroma/rag_db'))
 
     # Load the documents from the JSON file
-    with open('../data/data_telegram_250331.json', 'r', encoding="utf-8") as f:
+    with open(os.path.join('../../data/datamaps', datamap, 'telegram_gemini.json'), 'r', encoding="utf-8") as f:
         data = json.load(f)
 
-    documents = [f"[Source: Telegram account {m['account']}] [Date: {m['date']}] {m['text_english_genai']}" for m in data]
+    documents = [f"[Source: Telegram account {m['account']}] [Date: {m['date']}] {m['text_english']}" for m in data]
     logger.info(f"Number of documents: {len(documents)}")
 
     # Add documents to the collection
@@ -121,7 +122,7 @@ def build_database():
 
 def answer(query: str, n_results: int):
 
-    with open("../config.yaml") as f:
+    with open("../../config.yaml") as f:
         config = yaml.safe_load(f)
         GOOGLE_API_KEY = config['secret_keys']['google']['api_key']
 
@@ -135,12 +136,13 @@ def answer(query: str, n_results: int):
     
 
 @click.command()
+@click.option('--datamap', required=False, help="Name of the datamap")
 @click.option('--query', required=False, help='Question to ask to the RAG system')
-def main(query=None):
+def main(datamap=None, query=None):
 
     # Build mode
-    if query is None:
-        build_database()
+    if (query is None) and (datamap is not None):
+        build_database(datamap)
 
     # Query mode
     else:
@@ -151,7 +153,24 @@ def main(query=None):
 if __name__ == "__main__":
     main()
 
-# build database: uv run rag.py
-# host the database: uv run chroma run --path ../data/.chroma/rag_db --host localhost --port 8001
 
-# query the database: uv run rag.py --query "What happened in Rafah?"
+# uv run rag.py --datamap sample                                                                     # build database on terminal 1
+# uv run chroma run --path ../../data/datamaps/sample/.chroma/rag_db --host localhost --port 8001    # host the database on terminal 1
+# uv run rag.py --query "What happened in Rafah?"                                                    # query the database on terminal 2
+
+# Expected output:
+# According to Telegram posts from March 31, 2025, Rafah is experiencing a dire humanitarian crisis.
+
+# Here's what is happening:
+
+# *   **Displacement:** Families are fleeing Rafah on foot due to Israeli threats and military activity. They lack transportation, essential supplies, and shelter.
+# *   **Attacks and Casualties:** There are reports of intense gunfire, bombings, and violent raids in and around Rafah, including the western and northern areas. 
+# Civilians have been injured and killed in these attacks. For instance, one post reports that a young man was killed and his brother injured while they were 
+# transporting citizens from Rafah.
+# *   **Attacks on Humanitarian Workers:** A Palestine Red Crescent Society (PRCS) and Civil Defense team was struck by Israeli forces while attempting to retrieve 
+# injured individuals. According to one post, ten PRCS and six Civil Defense first responders were dispatched to collect injured individuals, but all five ambulances
+#  and one fire truck were struck. The bodies of eight paramedics were recovered from a mass grave, while one is still missing and believed to be arrested.
+# *   **Humanitarian Crisis:** The Rafah Municipality reports a severe humanitarian crisis due to the closure of crossings and the prevention of aid. Basic services
+#  have been frozen, and there are warnings of an impending environmental disaster.
+# *   **Appeals for Help:** There are urgent appeals to the Red Cross and other competent authorities to evacuate families trapped under fire and to provide 
+# assistance to the displaced.

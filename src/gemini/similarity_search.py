@@ -1,3 +1,4 @@
+import os
 import json
 import yaml
 import click
@@ -71,22 +72,22 @@ class SimilaritySearch:
         return self.collection.query(query_embeddings, n_results=n_results)
         
 
-def build_database():
+def build_database(datamap: str):
     
     # Get the API key from the config file
-    with open("../config.yaml") as f:
+    with open('../../config.yaml') as f:
         config = yaml.safe_load(f)
         GOOGLE_API_KEY = config['secret_keys']['google']['api_key']
 
     # Initialize the SimilaritySearch class
     similarity_search = SimilaritySearch(GOOGLE_API_KEY=GOOGLE_API_KEY)
-    similarity_search.create_collection(persist_directory="../data/.chroma/similarity_search_db")
+    similarity_search.create_collection(persist_directory=os.path.join('../../data/datamaps', datamap, '.chroma/similarity_search_db'))
 
     # Load the documents from the JSON file
-    with open('../data/data_telegram_250331.json', 'r', encoding="utf-8") as f:
+    with open(os.path.join('../../data/datamaps', datamap, 'telegram_gemini.json'), 'r', encoding="utf-8") as f:
         data = json.load(f)
 
-    documents = [f"[Date: {m['date']}] {m['text_english_genai']}" for m in data]
+    documents = [f"[Date: {m['date']}] {m['text_english']}" for m in data]
     logger.info(f"Number of documents: {len(documents)}")
 
     # Add documents to the collection
@@ -96,7 +97,7 @@ def build_database():
 def search(query: str, n_results: int):
     
     # Get the API key from the config file
-    with open("../config.yaml") as f:
+    with open("../../config.yaml") as f:
         config = yaml.safe_load(f)
         GOOGLE_API_KEY = config['secret_keys']['google']['api_key']
 
@@ -110,12 +111,13 @@ def search(query: str, n_results: int):
 
 
 @click.command()
+@click.option('--datamap', required=False, help="Name of the datamap")
 @click.option('--query', required=False, help='Query to search for similar message')
-def main(query=None):
+def main(datamap=None, query=None):
     
         # Build mode
-        if query is None:
-            build_database()
+        if (query is None) and (datamap is not None):
+            build_database(datamap)
     
         # Query mode
         else:
@@ -127,7 +129,13 @@ def main(query=None):
 if __name__ == "__main__":
     main()
 
-# build database: uv run similarity_search.py
-# host the database on terminal 1: uv run chroma run --path ../data/.chroma/similarity_search_db --host localhost --port 8000
+# uv run similarity_search.py --datamap sample                                                                     # build database on terminal 1
+# uv run chroma run --path ../../data/datamaps/sample/.chroma/similarity_search_db --host localhost --port 8000    # host the database on terminal 1
+# uv run similarity_search.py --query "A huge explosion was heard in Rafah"                                        # query the database on terminal 2
 
-# query the database on terminal 2: uv run similarity_search.py --query "A huge explosion was heard in Rafah"
+# Expected output:
+# Distance: 0.128 [Date: 2025-03-31 23:52:43] The latest explosion in the city of Rafah was heard throughout the Gaza Strip.
+# Distance: 0.133 [Date: 2025-03-31 19:33:56] Again, violent explosions north of the city of Rafah.
+# Distance: 0.140 [Date: 2025-03-31 19:36:55] Strong explosions are heard between the city of Khan Yunis and Rafah
+# Distance: 0.151 [Date: 2025-03-31 02:20:07] Urgent: New explosion in the Tel Sultan neighborhood of Rafah
+# Distance: 0.153 [Date: 2025-03-31 02:24:42] Blowing up a residential square in Al-Sultan neighborhood, west of Rafah, and the sound of its explosion was heard from the central governorate.

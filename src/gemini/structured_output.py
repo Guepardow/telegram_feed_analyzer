@@ -1,23 +1,21 @@
 import os
 from google import genai
 from google.genai import types
-# from google.api_core import retry
+from google.api_core import retry
 import yaml
 import typing_extensions as typing
 
-config_path = os.path.join(os.path.dirname(__file__), '../../config.yaml')
-GOOGLE_API_KEY = yaml.safe_load(open(config_path))['secret_keys']['google']['api_key']
-client = genai.Client(api_key=GOOGLE_API_KEY)
+def is_retriable(e):
+    return isinstance(e, genai.errors.APIError) and e.code in {429, 503}
 
-# is_retriable = lambda e: (isinstance(e, genai.errors.APIError) and e.code in {429, 503})
-# if not hasattr(genai.models.Models.generate_content, '__wrapped__'):
-#   genai.models.Models.generate_content = retry.Retry(
-#       predicate=is_retriable)(genai.models.Models.generate_content)
+if not hasattr(genai.models.Models.generate_content, '__wrapped__'):
+  genai.models.Models.generate_content = retry.Retry(
+      predicate=is_retriable)(genai.models.Models.generate_content)
 
 
 COMBINED_PROMPT = """
 You are a multifunctional assistant capable of translating, geolocating, and analyzing sentiment from a given Telegram post.
-These messages on posted on channels based in the Middle East (mainly, Gaza, Israel and West Bank).
+These messages on posted on channels based in this region: {region}.
 
 Telegram Message:
 ```
@@ -27,7 +25,7 @@ Telegram Message:
 Tasks:
 
 1. Translation:
-    a. Identify the language of the post. It could be in Arabic, Hebrew, or English.
+    a. Identify the language of the post. It could be in these languages: {languages}.
     b. Translate the post to English accurately.
     c. Maintain the original formatting, including paragraph breaks, lists, and emphasis.
     d. Ensure cultural references, idioms, and slang are appropriately translated or explained.
@@ -109,7 +107,7 @@ class StructuredAnalysis(typing.TypedDict):
   sentiment: Sentiment
 
 
-def structured_analysis(text: str, prompt_template: str):
+def structured_analysis(client, text: str, prompt_template: str, region: str, languages: str, model_google='gemini-2.0-flash'):
 
   structured_output_config = types.GenerateContentConfig(
       temperature=0.1,
@@ -117,13 +115,18 @@ def structured_analysis(text: str, prompt_template: str):
       response_schema=StructuredAnalysis,
   )
   response = client.models.generate_content(
-      model='gemini-2.0-flash',
+      model=model_google,
       config=structured_output_config,
-      contents=[prompt_template.format(text=text)],
+      contents=[prompt_template.format(text=text, region=region, languages=languages)],
   )
 
   return response.parsed
 
+if __name__ == '__main__':
+    config_path = os.path.join(os.path.dirname(__file__), '../../config.yaml')
+    GOOGLE_API_KEY = yaml.safe_load(open(config_path))['secret_keys']['google']['api_key']
+    client = genai.Client(api_key=GOOGLE_API_KEY)
+
 
 # text = '**للمرة الثانية خلال أسابيع... الاحتلال يهدم منزلين في طوبا الزنغرية بالداخل الفلسطيني المحتل، صباح اليوم**'
-# print(structured_analysis(text, COMBINED_PROMPT))
+# print(client, structured_analysis(text, COMBINED_PROMPT, 'the Middle East (mainly, Gaza, Israel and West Bank)', 'Arabic, Hebrew, or English'))
