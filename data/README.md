@@ -26,10 +26,30 @@ datamaps
 
 The `datamap-config.yaml` file describes the datamap and includes the following information:
 
-- **Time Period**: Start and end dates.
-- **Default Map Position**: Latitude, longitude, and zoom level.
-- **Geoconfirmed Maps**: List of geoconfirmed maps that are loaded.
-- **Telegram Accounts**: List of all Telegram accounts registered in this datamap.
+```yaml
+name: 'name_of_the_datamap'
+
+date:
+  timezone: 'timezone of the messages -- see https://en.wikipedia.org/wiki/List_of_tz_database_time_zones'
+  start: 'Start date for the collect of messages in the format YYYY-MM-DD HH:MM:SS'  # included
+  end : 'End date for the collect of messages in the format YYYY-MM-DD HH:MM:SS'  # excluded
+
+map:
+  lat: 36 # numerical value to specify the default latitude of the map
+  lon: 36 # numerical value to specify the default longitude of the map
+  zoom: 8 # numerical value to specify the default zoom of the map
+  region: 'Middle East'  # name of the region -- this is used by Gemini AI during the geolocation
+  languages: 'Arabic, Hebrew or English'  # all the languages -- this is used by Gemini AI during the translation 
+
+geoconfirmed:  # list of the Geoconfirmed maps' names
+ - 'Israel'
+ - 'Syria'
+
+telegram:  # list of the Telegram channels
+  - 'account_1'
+  - 'account_2'
+  - 'account_3'
+```
 
 ## Geoconfirmed Folder
 
@@ -40,7 +60,7 @@ cd geoconfirmed
 uv run download.py --map <map>
 ```
 
-The available maps are : 'World', 'DRC', 'Sahel', 'Taiwan', 'Cartel', 'Ukraine', 'Israel', 'Syria', 'NagornoKarabakh', 'Yemen', 'Myanmar' and 'WWII'.
+The available maps are : 'World', 'INDPAK', 'DRC', 'Sahel', 'Taiwan', 'Cartel', 'Ukraine', 'Israel', 'Syria', 'NagornoKarabakh', 'Yemen', 'Myanmar' and 'WWII'.
 
 ## Workflow
 

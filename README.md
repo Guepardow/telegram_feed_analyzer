@@ -62,14 +62,14 @@ unzip -q data/datamaps/sample.zip -d data/datamaps ; rm data/datamaps/sample.zip
 
 # 3. Dash Dashboard
 
-Two modes are available with the dashboard: `normal mode` and `no-server mode`.
+Three modes are available with the dashboard: `normal mode`, `no-server mode` and `live mode`.
 
-| Characteristics | `normal mode` | `no-server mode` |
-|-----------------|---------------|------------------|
-| Description     | ✅ This is the mode with all the features|❗This is a limited mode |
-| Features        | ✅ All the features |❌ Missing similarity search and RAG features|
-| Requirements    | 🗝️ Google API key |❗ No Google API key required |
-| Servers         | 🖥️ Need to build and launch databases |❗ No need to build or launch databases|
+| Characteristics | `normal mode` | `no-server mode` | `live mode`  |
+|-----------------|---------------|------------------|--------------|
+| Description     | ✅ This is the mode with all the features|❗This is a limited mode | ✅ This is the mode with all the features applied on a live stream of Telegram posts|
+| Features        | ✅ All the features |❌ Missing similarity search and RAG features| ❌ Missing similarity search and RAG features|
+| Requirements    | 🗝️ Google API key |❗ No Google API key required | 🗝️ Google API and Telegram keys | 
+| Servers         | 🖥️ Need to build and launch databases |❗ No need to build or launch databases| ❗ No need to build or launch databases|
 
 ## 3a. How to use the `normal mode`?
 
@@ -94,16 +94,6 @@ uv run chroma run --path ./data/datamaps/<datamap>/.chroma/rag_db --host localho
 uv run app.py
 ```
 
-## 3b. How to use the `no-server mode`?
-
-You can run a local Dash dashboard in a limited mode by running:
-
-```sh
-# a single terminal
-uv run app.py --no-server
-```
-
-
 <details>
   <summary>Dashboard</summary>
 
@@ -120,6 +110,48 @@ uv run app.py --no-server
   - locate on a map a coarsely geolocated Telegram message;
   - precisely find events geolocated by the Geoconfirmed teams;
   - ask questions to a RAG system built on the Telegram database;
+  - visualize the evolution of the sentiment and volume of messages
+  
+</details>
+
+## 3b. How to use the `no-server mode`?
+
+You can run a local Dash dashboard in a limited mode by running:
+
+```sh
+# a single terminal
+uv run app.py --no-server
+```
+
+## 3c. How to use the `live mode`?
+
+You can run a local Dash dashboard in a live mode by running, after creating a datamap-config.yaml in the folder live:
+
+```sh
+# terminal 1 to collect Telegram posts
+uv run live.py --datamap <datamap>
+
+# terminal 2 to run the dashboard Dash
+uv run liveapp.py --no-server
+```
+
+<details>
+  <summary>Dashboard</summary>
+
+  You should get a Dash dashboard that looks like this illustration: 
+    <p align="center">
+        <img src="./assets/app-v0.8.0.png" alt="Live DashApp" width="800"/>
+    </p>
+
+  On this dashboard, you can : 
+  - collect new Telegram posts;
+  - read Telegram message translated in English;
+  - filter based on a username;
+  - open Telegram on a specific message;
+  - ~~search for similar Telegram message;~~
+  - locate on a map a coarsely geolocated Telegram message;
+  - ~~precisely find events geolocated by the Geoconfirmed teams;~~
+  - ~~ask questions to a RAG system built on the Telegram database;~~
   - visualize the evolution of the sentiment and volume of messages
   
 </details>
