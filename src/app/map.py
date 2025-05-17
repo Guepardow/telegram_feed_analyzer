@@ -1,33 +1,29 @@
-import numpy as np
+import os
+import re
+import yaml
+from zipfile import ZipFile
+from bs4 import BeautifulSoup
+from datetime import datetime
+from loguru import logger
+from time import perf_counter
 
 from dash import html
-import dash_leaflet as dl
 
-def get_locations(messages: list[dict]) -> list[dict]:
-    locations = []
-    for mid, message in enumerate(messages):
-        for geoloc, coords in zip(message['geolocs'], message['coordinates']):
-            locations.append({'mid': mid, 'geoloc': geoloc, 'coordinates': coords})
 
-    return locations
-    
-    
-def generate_map(messages, geoconfirmed_locations):
+def get_telegram_locations(all_messages: list[dict]) -> list[dict]:
+    """
+    Return a list of all locations mentionned in Telegram posts
+    """
 
-    # Markers for Telegram (blue) and Geoconfirmed (red)
-    blue_icon = dict(iconUrl='./assets/marker-icon-blue.png', iconSize=(24,36), iconAnchor=(12, 18))
-    red_icon = dict(iconUrl='./assets/marker-icon-red.png', iconSize=(24,36),iconAnchor=(12, 18))
+    # Format the tooltip for a message
+    def get_locations(message):
 
-    # Extract the markers of a single Telegram message
-    def get_telegram_markers(message):
-        """
-        Return the list of Markers of all the locations mentioned in a message
-        """
         account, date = message['account'], message['date']
-        url = f"https://t.me/{account}/{message['id']}"
         text = message['text_english']
+        url = f"https://t.me/{account}/{message['id']}"
+        # has_photo, has_video = message['has_photo'], message['has_video']
 
-        markers = []
+        locations = []
         for geoloc, coords in zip(message['geolocs'], message['coordinates']):
             lat, lon = coords
 
@@ -36,59 +32,103 @@ def generate_map(messages, geoconfirmed_locations):
                     html.Span(account, style={'float': 'left', 'paddingLeft': '3px'}),
                     html.Span(date, style={'float': 'right', 'paddingRight': '3px'})
                     ], style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center'}),
-                    html.Div(text, style={'marginTop': '2px', 'padding': '3px'})
-                    ], style={'whiteSpace': 'normal', 'width': '300px', 'borderRadius': '8px'})  
+                html.Div(text, style={'marginTop': '2px', 'padding': '3px'}),
+                # html.Img(src='./assets/photo.png', height=16) if has_photo else None,
+                # html.Img(src='./assets/video.png', height=16) if has_video else None,
+                ], style={'whiteSpace': 'normal', 'width': '300px', 'borderRadius': '8px'})  
 
-            markers.append(dl.Marker(
-                position=(lat + np.random.uniform(-1e-4, 1e-4), lon + np.random.uniform(-1e-4, 1e-4)),  # Add noise to avoid overlapping markers
-                children=[dl.Tooltip(tooltip), dl.Popup(html.A(url, href=url, target='_blank'))],
-                icon=blue_icon))
+            popup = html.A(url, href=url, target='_blank')
 
-        return markers
+            locations.append({'position': (lat, lon), 'tooltip': tooltip, 'popup': popup, 'date': date})
 
-    # Extract the marker of a single Geoconfirmed post
-    def get_geoconfirmed_markers(loc):
+        return locations
+
+    # List of all locations mentioned in Telegram posts
+    telegram_locations = []
+    for message in all_messages:
+        telegram_locations.extend(get_locations(message))
+
+    return telegram_locations
+
+
+def get_geoconfirmed_locations(datamap:str) -> list[dict]:
+
+    def get_description(full_description: str) -> str:
         """
-        Return a Marker of the location mentionned in an post of Geoconfirmed
+        Return the textual description of an event
         """
+        pattern = r'(?:\d{1,2}:\d{2}\s?-\s?\d{1,2}:\d{2}[ :-]*)?(.+?)\s*Source'
+        return re.search(pattern, full_description, re.DOTALL).group(1).strip()
 
-        lon, lat = loc['geometry']['coordinates']
-        sources = loc['properties']['sources']
-        description = loc['properties']['description']
+    def get_sources(full_description):
+        
+        try:
+            pattern = r'Source(.*?)Geolocation'  # match all URLs between "Source" and "Geolocation"
+            urls = re.findall(r'https?://\S+', re.search(pattern, full_description, re.DOTALL).group(1))
+            
+        except:  # noqa: E722
+            # There is no Geolocation, since it may be a satellite image
+            
+            pattern = r'Source(.*?)$'  # match all URLs after "Source" 
+            urls = re.findall(r'https?://\S+', re.search(pattern, full_description, re.DOTALL).group(1))
+            
+        return urls
 
-        tooltip = html.Div([
-            html.Div(description, style={'marginTop': '2px', 'padding': '3px'})
-        ], style={'whiteSpace': 'normal', 'width': '300px', 'borderRadius': '8px'})
+    # Open datamap to get the list of Geoconfirmed maps to load
+    with open(os.path.join('data/datamaps', datamap, 'datamap-config.yaml')) as f:
+        config = yaml.safe_load(f)
+        list_maps = config['geoconfirmed']
 
-        popup = html.Div([html.A(source, href=source, target='_blank') for source in sources])
+    geoconfirmed_locations = []
+    for mapname in list_maps:
 
-        return dl.Marker(
-            position=(lat, lon),
-            children=[dl.Tooltip(tooltip), dl.Popup(popup)],
-            icon=red_icon)
+        # Find the latest version of Geoconfirmed
+        filename = sorted(os.listdir(os.path.join('data/geoconfirmed', mapname)))[-1]
+        
+        tic = perf_counter()
 
-    # Extract all markers from all Telegram messages
-    markers_telegram = [get_telegram_markers(message) for message in messages]
-    markers_telegram = [marker for markers in markers_telegram for marker in markers]
+        # Open KMZ map and parse it
+        with ZipFile(os.path.join('data/geoconfirmed', mapname, filename)) as kmz:
+            with kmz.open('doc.kml') as kml_file:
+                kml = kml_file.read()
+        soup = BeautifulSoup(kml, 'lxml-xml')  # faster than 'xml'
+        placemarks = soup.find_all('Placemark')
+        logger.debug(f"\tElapsed time for opening KMZ file: {perf_counter() - tic:0.3f} sec")
+        
+        # Load locations that fit the date range
+        for placemark in placemarks:
+    
+            name_loc = placemark.find().text
+            if (name_loc != 'Dummy placemark') and ('Front line' not in name_loc) and ('Frontline' not in name_loc):
+                coordinates = placemark.coordinates.text
+                if len(coordinates) < 100:
 
-    # Extract all markers from all Geoconfirmed posts
-    markers_geoconfirmed = [get_geoconfirmed_markers(loc) for loc in geoconfirmed_locations['features']]
+                    # Parse date of the geolocated event
+                    date_str = placemark.find("name").text
+                    date = datetime.strptime(date_str, "%d %b %Y").date()
 
-    # Create the map
-    m = dl.Map(
-        [
-            dl.TileLayer(
-                url='https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
-                attribution='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'),
-            dl.LayersControl([
-                dl.Overlay(dl.LayerGroup(markers_telegram), name='Telegram', checked=True),
-                dl.Overlay(dl.LayerGroup(markers_geoconfirmed), name='Geoconfirmed', checked=True),
-            ], id='lc', collapsed=False)
-        ],
-        center=(32, 35),
-        zoom=8,
-        style={'width': '100%', 'height': '100%'},
-        id='map',
-    )
+                    # Description of the event
+                    full_description = placemark.find("description").text
+                    description = get_description(full_description)
 
-    return m
+                    # Sources of the events
+                    sources = get_sources(full_description)
+                    source_links = [element for source in sources for element in [html.A(source, href=source, target='_blank'), html.Br()]]
+                    if source_links: # Remove the last html.Br element to avoid an extra line break at the end
+                        source_links.pop()
+
+                    popup = html.Div(source_links, style={'whiteSpace': 'normal', 'width': '400px', 'borderRadius': '8px'})
+
+                    # Coordinates
+                    coordinates = placemark.find("coordinates").text
+                    lon, lat, _ = coordinates.split(',')
+
+                    # Tooltip
+                    tooltip = html.Div([
+                        html.Div([html.Span(date, style={'float': 'right', 'paddingRight': '3px'})]),
+                        html.Div(description, style={'marginTop': '2px', 'padding': '3px'})
+                        ], style={'whiteSpace': 'normal', 'width': '300px', 'borderRadius': '8px'})
+
+                    geoconfirmed_locations.append({'date': date, 'tooltip': tooltip, 'popup': popup, 'position': (float(lat), float(lon))})
+
+    return geoconfirmed_locations

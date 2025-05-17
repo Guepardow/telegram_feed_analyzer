@@ -2,52 +2,30 @@ import os
 import json
 import yaml
 import click
-import pandas as pd
 from loguru import logger
+from typing import Optional
+from time import perf_counter
 from datetime import datetime, timedelta
 
 import dash
+import dash_leaflet as dl
+import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 from dash import dcc, html, Input, Output, State, Patch
 
-from src.rag import RAG
-from src.similarity_search import SimilaritySearch
+from src.gemini.rag import RAG
+from src.gemini.similarity_search import SimilaritySearch
 
-from src.app.grid import render_message_html, generate_grid
-from src.app.map import get_locations, generate_map
-from src.app.chart import precompute_df_sentiment, generate_chart
+from src.app.chart import generate_chart
+from src.app.grid import render_message_html
+from src.app.map import get_geoconfirmed_locations, get_telegram_locations
 
 # --- List of datamaps ---
 
 list_datamaps = [f for f in os.listdir('./data/datamaps') if os.path.isdir(os.path.join('./data/datamaps', f))]
 
-# --- Geoconfirmed ---
+# --- Connect to Chroma Databases ---
 
-# Define the GeoJSON structure
-geojson_data = {
-    'type': 'FeatureCollection',
-    'features': [
-        {
-            'type': 'Feature',
-            'geometry': {
-                'type': 'Point',
-                'coordinates': [34.248702, 31.299197]  # Longitude, Latitude
-            },
-            'properties': {
-                'description': "The IDF has issued an evacuation alert over most of the Rafah area that isn't already under IDF control (due to the philadelphi corridor).",
-                'sources': ['https://x.com/AvichayAdraee/status/1906595629993967915'],
-                'type': 'call'
-            }
-        }
-    ]
-}
-
-with open('./data/datamaps/syria_241125-241215/telegram_baseline.json', 'r', encoding='utf-8') as f:
-    messages = json.load(f)[:100]
-
-telegram_locations = get_locations(messages)
-
-# Load config and initialize the RAG system and the SimilaritySearch system
 with open('./config.yaml') as f:
     config = yaml.safe_load(f)
     GOOGLE_API_KEY = config['secret_keys']['google']['api_key']
@@ -55,21 +33,10 @@ with open('./config.yaml') as f:
 rag = RAG(GOOGLE_API_KEY=GOOGLE_API_KEY)
 similarity_search = SimilaritySearch(GOOGLE_API_KEY=GOOGLE_API_KEY)
 
-df_long = precompute_df_sentiment(messages)
-
-for idx, msg in enumerate(messages):
-    msg['message_html'] = render_message_html(msg)
-
-df = pd.DataFrame(messages)
-
-grid = generate_grid(messages)
-
 # --- Initialize Dash app ---
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
 app.title = 'Telegram Feed Analyzer'
-
-# --- Styles & Layout ---
 
 CARD_STYLE = {'backgroundColor': '#3c3c3c', 'borderRadius': '8px', 'padding': '8px', 'height': '100%', 'margin':'0px'}
 LABEL_STYLE = {'marginBottom': '4px', 'fontWeight': 'bold', 'fontSize': '16px'}
@@ -97,7 +64,7 @@ app.layout = dbc.Container([
                 [
                     html.Div('🗺️', className='pr-2', style={'fontSize': '25px'}),
                     dcc.Dropdown(
-                        id='map-input',
+                        id='datamap',
                         options=[{'label': label, 'value': label} for label in list_datamaps],
                         placeholder='Select a datamap',
                         className='dark-theme-dropdown',
@@ -158,11 +125,11 @@ app.layout = dbc.Container([
 
     # Horizontal rule
     html.P(id='messages-stat', style={'fontSize': '12px', 'marginLeft': '8px','fontFamily': 'monospace'}),
-    dcc.Store(id='messages'),
+    dcc.Store(id='all_messages'),
+    dcc.Store(id='all_telegram_locations'),
+    dcc.Store(id='all_geoconfirmed_locations'),
+    dcc.Store(id='messages'),  # TODO: check if faster if store the whole dataset
     dcc.Store(id='messages-dag-init'),
-    dcc.Store(id='telegram_locations'),
-    dcc.Store(id='geoconfirmed_locations'),
-    dcc.Store(id='json_sentiment'),
     dcc.Store(id='is_filtered', data=False),
     html.Hr(style={'marginTop': '8px','marginBottom': '16px'}),
 
@@ -177,7 +144,10 @@ app.layout = dbc.Container([
                     dcc.Input(id='quick-filter-input', placeholder='Filter on keywords ...', style={'width': '100%', 'backgroundColor': '#1f1f1f', 'color': '#ffffff', 'borderRadius': '4px', 'border': 'none', 'padding': '8px', 'marginBottom': '10px'}),
 
                     # Messages with dag
-                    html.Div([grid], id='messages-feed', style={'height': '80vh', 'marginx': '8px'}),
+                    dcc.Loading(
+                        html.Div([dag.AgGrid(id='messages-dag')], id='messages-feed', style={'height': '80vh', 'marginx': '8px'}), 
+                        style={'height': '80vh', 'marginx': '8px'}
+                    ),
                     html.Button('Reset filters \u27f3', id='reset-button', style={'width': '100%', 'backgroundColor': 'grey', 'border': 'none', 'borderRadius': '4px', 'margin-top': '8px'})
                 ]),
 
@@ -197,7 +167,6 @@ app.layout = dbc.Container([
                              style={'flex': 1, 'height': '83vh', 'backgroundColor': '#1f1f1f', 'borderRadius': '5px', 
                                     'padding': '10px', 'overflowY': 'auto'}
                             ),
-                    id='loading-component', 
                     style={'flex': 1, 'height': '83vh', 'backgroundColor': '#1f1f1f', 'borderRadius': '5px', 'padding': '10px'}),
             ], style=CARD_STYLE)
         ], width=3, style={'padding-right': '0px'}),
@@ -205,9 +174,25 @@ app.layout = dbc.Container([
         # Right Column - Map and Sentiment Chart
         dbc.Col([
             dbc.Card([
-                html.Div(children=generate_map(messages, geojson_data), style={'flex': 1, 'height': '50vh', 'backgroundColor': '#1f1f1f', 'borderRadius': '5px', 'padding': '0px', 'marginBottom': '10px'}),
+                dcc.Loading(
+                    html.Div(
+                        children=dl.Map(
+                            id='map', center=(10, 0), zoom=2,
+                            children=[
+                                dl.TileLayer(
+                                    url='https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
+                                    attribution='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'),
+                                    dl.LayersControl([
+                                        dl.Overlay(dl.LayerGroup(id='telegram-layer'), name='Telegram', checked=True),
+                                        dl.Overlay(dl.LayerGroup(id='geoconfirmed-layer'), name='Geoconfirmed', checked=True),
+                                    ], id='lc', collapsed=False)
+                            ],
+                            style={'height': '100%', 'width': '100%'}),
+                        id='div-map', 
+                        style={'flex': 1, 'height': '50vh', 'backgroundColor': '#1f1f1f', 'borderRadius': '5px', 'padding': '0px', 'marginBottom': '10px'}),
+                ),
                 
-                dcc.Graph(id='sentiment-chart', figure=generate_chart(df_long, '30min'), style={'height': '33vh'}),
+                dcc.Loading(dcc.Graph(id='sentiment-chart', style={'height': '37vh'})),
 
                 dcc.RadioItems(id='interval', options=[
                     {'label': '5min', 'value': '5min'},
@@ -228,13 +213,13 @@ app.layout = dbc.Container([
 
 ], fluid=True)
 
-# --- Callbacks ---
+# --- Callbacks for the header ---
 
 @app.callback(
     Output('date-input', 'value'),
     Input('reset-date', 'n_clicks'),
-    Input('map-input', 'value'),
-    prevent_initial_call=False
+    Input('datamap', 'value'),
+    prevent_initial_call=True
 )
 def reset_date(n_clicks, map_name):
     """
@@ -243,7 +228,7 @@ def reset_date(n_clicks, map_name):
     """
 
     if map_name:
-        with open(os.path.join('./data/datamaps', map_name, 'map-config.yaml')) as f:
+        with open(os.path.join('./data/datamaps', map_name, 'datamap-config.yaml')) as f:
             map_config = yaml.safe_load(f)
 
         map_date_start = map_config['date']['start']
@@ -264,6 +249,8 @@ def update_date(increase_clicks, decrease_clicks, current_date):
     if not ctx.triggered:
         return current_date
 
+    # TODO : check the format of the writable date
+
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
     date_obj = datetime.strptime(current_date, '%Y-%m-%d %H:%M')
 
@@ -274,59 +261,117 @@ def update_date(increase_clicks, decrease_clicks, current_date):
 
     return date_obj.strftime('%Y-%m-%d %H:%M')
 
-@app.callback(
-    Output('run-button', 'style'),
-    Input('question-input', 'value'),
-    prevent_initial_call=True
-)
-def update_button_color(question):
-    if question:
-        return {'width': '15%', 'backgroundColor': '#4CAF50', 'borderRadius': '4px', 'border': 'none'}
-    return {'width': '15%', 'backgroundColor': 'grey', 'borderRadius': '4px', 'border': 'none'}
+# --- Callbacks for the Telegram messages feed ---
 
 @app.callback(
-    Output('sentiment-chart', 'figure'),
-    Input('interval', 'value'),
+    Output('all_messages', 'data'),
+    Input('datamap', 'value'),
     prevent_initial_call=True
 )
-def update_sentiment_chart(interval):
-    return generate_chart(df_long, interval)
+def load_all_messages(datamap: Optional[str]):
+
+    if datamap:
+        tic = perf_counter()
+
+        with open(os.path.join('./data/datamaps', datamap, 'telegram_gemini.json'), 'r', encoding='utf-8') as f:
+            all_messages = json.load(f)
+
+        # Add additional columns for rendering
+        for idx, message in enumerate(all_messages):
+            all_messages[idx]['message_html'] = render_message_html(message)
+        logger.debug(f"Elapsed time for load_all_messages: {perf_counter() - tic:0.3f} sec")
+
+        return all_messages
+    return dash.no_update
 
 @app.callback(
-    Output('messages-feed', 'children'),
-    Output('is_filtered', 'data', allow_duplicate=True),
-    Output('reset-button', 'style', allow_duplicate=True),
-    Input('reset-button', 'n_clicks'),
+    Output('messages-stat', 'children'),
+    Output('messages', 'data'),
+    Input('datamap', 'value'),
+    Input('date-input', 'value'),
+    Input('duration-input', 'value'), 
+    Input('all_messages', 'data'),
     prevent_initial_call=True
 )
-def reset_grid(n_clicks):
-    return grid, False, {'width': '100%', 'border': 'none', 'borderRadius': '4px', 'margin-top': '8px', 'backgroundColor': 'grey'}
+def load_messages(datamap: Optional[str], date_start: Optional[str], duration: Optional[int], all_messages):
+
+
+    if datamap and date_start and duration:
+        tic = perf_counter()
+
+        # Filter dates
+        date_start = datetime.strptime(date_start, '%Y-%m-%d %H:%M')
+        date_end = date_start + timedelta(hours=duration)
+
+        date_start, date_end = date_start.strftime('%Y-%m-%d %H:%M'), date_end.strftime('%Y-%m-%d %H:%M')
+        messages = [m for m in all_messages if date_start <= m['date'] < date_end]
+        messages_stat = f'Number of Telegram messages in map {datamap} between {date_start} and {date_end}: {len(messages)}'
+
+        logger.debug(f"Elapsed time for load_messages: {perf_counter() - tic:0.3f} sec")
+
+        return messages_stat, messages
+    
+    else:
+
+        return dash.no_update, dash.no_update
 
 @app.callback(
-    Output('response-rag', 'children'),
-    Input('run-button', 'n_clicks'),
-    State('question-input', 'value'),
+    Output('messages-feed', 'children', allow_duplicate=True), 
+    Output('messages-dag-init', 'data'),
+    Input('messages', 'data'), 
     prevent_initial_call=True
 )
-def run_query(n_clicks, query):
-    if not query:
-        return 'Please enter a question.'
-    answer = rag.query(query=query, n_results=20)
-    return dcc.Markdown([answer])
+def create_grid(messages):
+    
+    tic = perf_counter()
+
+    columnDefs = [
+    {'field': 'message_html', 'cellRenderer': 'RenderHTML'},
+    {'field': 'account', 'hide': True},  # Invisible column
+    {'field': 'sim', 'hide': True},  # Invisible column
+    {'field': 'date', 'hide': True},  # Invisible column
+    {'field': 'text_english', 'hide': True}  # Invisible column
+    ]
+
+    grid = dag.AgGrid(
+        id='messages-dag',
+        columnDefs=columnDefs,
+        rowData=messages,
+        columnSize='responsiveSizeToFit',
+        dashGridOptions={
+            'headerHeight':0, 
+            'rowStyle': {'border': 'none'},
+            'suppressCellFocus': True
+            },
+        style={'height': '100%', 'width': '100%'},
+        className='no-border-grid',
+        defaultColDef={
+            'sortable': True, 'filter': True,
+            'cellStyle': {'backgroundColor': '#3c3c3c', 'color': 'white', 'padding': '0px'},
+            'wrapText': True,  # Ensure text wraps within the cell
+            'autoHeight': True  # Automatically adjust the height of the row based on content
+        }
+    )
+
+    logger.debug(f"Elapsed time for create_grid: {perf_counter() - tic:0.3f} sec")
+
+    return grid, grid
 
 @app.callback(
     Output('messages-dag', 'filterModel'),
     Output('messages-dag', 'rowData', allow_duplicate=True),
     Output('reset-button', 'style'),
     Output('is_filtered', 'data'),
-    Output('map', 'center'),
-    Output('map', 'zoom'),
+    Output('map', 'center', allow_duplicate=True),
+    Output('map', 'zoom', allow_duplicate=True),
     Input('messages-dag', 'cellRendererData'),
     Input('is_filtered', 'data'),
     State('messages-dag', 'rowData'),
+    State('all_messages', 'data'),
     prevent_initial_call=True
 )
-def update_grid(cellRendererData, is_filtered, current_row_data):
+def update_grid(cellRendererData, is_filtered, current_row_data, all_messages):
+    # FIXME: should use all_row_data
 
     style_common = {'width': '100%', 'border': 'none', 'borderRadius': '4px', 'margin-top': '8px'}
 
@@ -344,8 +389,9 @@ def update_grid(cellRendererData, is_filtered, current_row_data):
 
             # Format the message 
             idx = cellRendererData['rowIndex']
-            message, date = messages[idx]['text_english'],  messages[idx]['date']
+            message, date = all_messages[idx]['text_english'],  all_messages[idx]['date']
             query_message = f"[Date: {date}] {message}"
+            logger.info(f"Search for similar message for idx {idx}, {date}")
 
             # Search for the top k
             results = similarity_search.query(query_message, n_results=100)
@@ -373,6 +419,158 @@ def update_filter(filter_value):
     newFilter['quickFilterText'] = filter_value
     return newFilter
 
+@app.callback(
+    Output('messages-feed', 'children'),
+    Output('is_filtered', 'data', allow_duplicate=True),
+    Output('reset-button', 'style', allow_duplicate=True),
+    Input('reset-button', 'n_clicks'),
+    State('messages-dag-init', 'data'),
+    prevent_initial_call=True
+)
+def reset_grid(n_clicks, initial_grid):
+    return initial_grid, False, {'width': '100%', 'border': 'none', 'borderRadius': '4px', 'margin-top': '8px', 'backgroundColor': 'grey'}
+
+# --- Callbacks for the RAG system --
+
+@app.callback(
+    Output('run-button', 'style'),
+    Input('question-input', 'value'),
+    prevent_initial_call=True
+)
+def update_button_color(question):
+    if question:
+        return {'width': '15%', 'backgroundColor': '#4CAF50', 'borderRadius': '4px', 'border': 'none'}
+    return {'width': '15%', 'backgroundColor': 'grey', 'borderRadius': '4px', 'border': 'none'}
+
+@app.callback(
+    Output('response-rag', 'children'),
+    Input('run-button', 'n_clicks'),
+    State('question-input', 'value'),
+    prevent_initial_call=True
+)
+def run_query(n_clicks, query):
+    if not query:
+        return 'Please enter a question.'
+    answer = rag.query(query=query, n_results=20)
+    return dcc.Markdown([answer])
+
+# --- Callbacks for the map ---
+
+@app.callback(
+    Output('map', 'center'),
+    Output('map', 'zoom'),
+    Input('datamap', 'value'),
+    prevent_initial_call=True
+    )
+def view_map(datamap):
+
+    if datamap:
+
+        with open(os.path.join('./data/datamaps', datamap, 'datamap-config.yaml')) as f:
+            config = yaml.safe_load(f)
+            lat = config['map']['lat']
+            lon = config['map']['lon']
+            zoom = config['map']['zoom']
+
+        logger.info(f"Recenter map at ({lat}, {lon}) with zoom={zoom}")
+
+        return (lat, lon), zoom
+
+    return dash.no_update, dash.no_update
+    
+
+@app.callback(
+    Output('all_telegram_locations', 'data'),
+    Input('all_messages', 'data'),
+    prevent_initial_call=True
+)
+def load_telegram_locations(all_messages):
+
+    logger.info('Load Telegram all locations')
+    
+    if all_messages:
+        return get_telegram_locations(all_messages)
+    return []
+
+@app.callback(
+    Output('all_geoconfirmed_locations', 'data'),
+    Input('datamap', 'value'),
+    prevent_initial_call=True
+)
+def load_geoconfirmed_locations(datamap: Optional[str]):
+    
+    if datamap:
+        tic = perf_counter()
+        locs = get_geoconfirmed_locations(datamap)
+        logger.debug(f"Elapsed time for load_geoconfirmed_locations: {perf_counter() - tic:0.3f} sec")
+
+        return locs
+    
+    return []
+
+@app.callback(
+    Output('telegram-layer', 'children'),
+    Output('geoconfirmed-layer', 'children'),
+    Input('date-input', 'value'),
+    Input('duration-input', 'value'),
+    Input('all_telegram_locations', 'data'),
+    Input('all_geoconfirmed_locations', 'data'),
+    prevent_initial_call=True
+)
+def update_telegram_markers(date_start, duration, all_telegram_locations, all_geoconfirmed_locations):
+
+    if date_start and duration:
+        # Datetimes
+        dt_start = datetime.strptime(date_start, '%Y-%m-%d %H:%M')
+        dt_end = dt_start + timedelta(hours=duration) - timedelta(seconds=1)
+
+        # String format %Y-%m-%d %H:%M to filter Telegram posts
+        date_end = datetime.strftime(dt_end, '%Y-%m-%d %H:%M')
+
+        # String format %Y-%m-%d to filter Geoconfirmed posts
+        day_start = datetime.strftime(dt_start, '%Y-%m-%d')
+        day_end = datetime.strftime(dt_end, '%Y-%m-%d')
+
+        filtered_telegram_locs = [
+            dl.Marker(
+                position=item["position"],
+                children=[dl.Tooltip(item['tooltip']), dl.Popup(item['popup'])],
+                icon = dict(iconUrl='assets/marker-icon-blue.png', iconAnchor=(12, 18))
+            )
+            for item in all_telegram_locations if date_start <= item["date"] < date_end
+        ]
+
+        filtered_geoconfirmed_locs = [
+            dl.Marker(
+                position=item["position"],
+                children=[dl.Tooltip(item['tooltip']), dl.Popup(item['popup'])],
+                icon = dict(iconUrl='assets/marker-icon-red.png', iconAnchor=(12, 18))
+            )
+            for item in all_geoconfirmed_locations if day_start <= item["date"] <= day_end  # TODO: check
+        ]
+
+        return filtered_telegram_locs, filtered_geoconfirmed_locs
+    
+    return dash.no_update, dash.no_update
+
+# --- Callbacks for the sentiment chart ---
+
+@app.callback(
+    Output('sentiment-chart', 'figure'),
+    Input('messages', 'data'),
+    Input('interval', 'value'),
+    prevent_initial_call=True
+)
+def update_sentiment_chart(messages, interval):
+    tic = perf_counter()
+    chart = generate_chart(messages, interval)
+    logger.debug(f"Elapsed time for chart: {perf_counter() - tic:0.3f} sec")
+    return chart
+
+    # TODO: Patch()
+
+# --- Main function ---
+
 @click.command()
 @click.option('--no-server', is_flag=True, help='Run the app without the servers for similarity search and RAG')
 def main(no_server):
@@ -389,7 +587,7 @@ def main(no_server):
         similarity_search.load_collection(host='localhost', port=8000)
         rag.load_collection(host='localhost', port=8001)
 
-    app.run_server(debug=True)
+    app.run_server(debug=False)
 
 
 if __name__ == '__main__':

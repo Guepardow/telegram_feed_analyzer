@@ -9,6 +9,7 @@
     background-color: black;
     color: white !important;
     border: 1px solid #333;
+    width: 90%;
 }
 
 .dark-theme-dropdown .Select-value-label {

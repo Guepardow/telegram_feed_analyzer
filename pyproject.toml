@@ -1,10 +1,11 @@
 [project]
 name = "telegram-feed-analyzer"
-version = "0.6.0"
+version = "0.7.0"
 description = "Using Generative AI on Telegram for Crisis Reporting"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "beautifulsoup4>=4.13.4",
     "chromadb==0.6.3",
     "click>=8.1.8",
     "dash==2.18",
@@ -15,6 +16,7 @@ dependencies = [
     "google-api-core>=2.24.2",
     "google-genai==1.7.0",
     "loguru>=0.7.3",
+    "lxml>=5.4.0",
     "numpy>=2.2.5",
     "pandas>=2.2.3",
     "telethon>=1.40.0",

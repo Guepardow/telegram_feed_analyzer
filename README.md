@@ -56,7 +56,8 @@ You must get a [Google API key here (for free)](https://aistudio.google.com/app/
 You can download 1987 "enhanced messages" posted on Telegram on March 31st, 2025 about the situation in Israel and Palestine:
 
 ```sh
-curl -q https://mehdimiah.com/blog/telegram_feed_analyzer/data/data_telegram_250331.json --output data/data_telegram_250331.json
+curl -q https://mehdimiah.com/blog/telegram_feed_analyzer/data/sample.zip --output data/datamaps/sample.zip
+unzip -q data/datamaps/sample.zip -d data/datamaps ; rm data/datamaps/sample.zip
 ```
 
 # 3. Dash Dashboard
@@ -72,22 +73,22 @@ Two modes are available with the dashboard: `normal mode` and `no-server mode`.
 
 ## 3a. How to use the `normal mode`?
 
-First, create Persistent Chroma databases for the embeddings (for the tasks on semantic search and retrieval). The databases will be stored in `./data/.chroma`):
+First, create Persistent Chroma databases for the embeddings (for the tasks on semantic search and retrieval). The databases will be stored in `./data/datamaps/<datamap>/.chroma`):
 
 ```sh
-cd src
-uv run similarity_search.py  # build the Chroma database with the embeddings on semantic search
-uv run rag.py  # build the Chroma database with the embeddings for the RAG system
+cd src/gemini
+uv run similarity_search.py --datamap <datamap> # build the Chroma database similarity_search_db with the embeddings on semantic search
+uv run rag.py --datamap <datamap>  # build the Chroma database rag_db with the embeddings for the RAG system
 ```
 
 You can then run a local Dash dashboard by running:
 
 ```sh
 # terminal 1 to run the database server with the embeddings on semantic search as a HttpClient: 
-uv run chroma run --path ./data/.chroma/similarity_search_db --host localhost --port 8000
+uv run chroma run --path ./data/datamaps/<datamap>/.chroma/similarity_search_db --host localhost --port 8000
 
 # terminal 2 to run the database server with the embeddings on retrieval (RAG) as a HttpClient: 
-uv run chroma run --path ./data/.chroma/rag_db --host localhost --port 8001
+uv run chroma run --path ./data/datamaps/<datamap>/.chroma/rag_db --host localhost --port 8001
 
 # terminal 3 to run the Dash dashboard: 
 uv run app.py
@@ -108,7 +109,7 @@ uv run app.py --no-server
 
   You should get a Dash dashboard that looks like this illustration: 
     <p align="center">
-        <img src="./assets/app-v0.5.1.png" alt="DashApp" width="800"/>
+        <img src="./assets/app-v0.7.0.png" alt="DashApp" width="800"/>
     </p>
 
   On this dashboard, you can : 
@@ -154,8 +155,8 @@ cd src/gemini ; uv run analyze_post.py --post https://t.me/<account_name>/<messa
 With Gemini 2.0 Flash:
 ```bash
 cd src
-uv run similarity_search.py --datamap sample  # if not already, build the Chroma database with the embeddings
-uv run chroma run --path ../data/datamaps/sample/.chroma/similarity_search_db --host localhost --port 8000  # terminal 1
+uv run similarity_search.py --datamap <datamap>  # if not already, build the Chroma database with the embeddings
+uv run chroma run --path ../data/datamaps/<datamap>/.chroma/similarity_search_db --host localhost --port 8000  # terminal 1
 uv run similarity_search.py --query "A huge explosion was heard in Rafah" # terminal 2
 ```
 
@@ -180,8 +181,8 @@ uv run similarity_search.py --query "A huge explosion was heard in Rafah" # term
 With Gemini 2.0 Flash:
 ```bash
 cd src
-uv run rag.py --datamap sample  # if not already, build the Chroma database with the embeddings
-uv run chroma run --path ../data/datamaps/sample/.chroma/rag_db --host localhost --port 8001  # terminal 1
+uv run rag.py --datamap <datamap>  # if not already, build the Chroma database with the embeddings
+uv run chroma run --path ../data/datamaps/<datamap>/.chroma/rag_db --host localhost --port 8001  # terminal 1
 uv run rag.py --query "What happened in Rafah?"  # terminal 2
 ```
 
@@ -191,7 +192,7 @@ uv run rag.py --query "What happened in Rafah?"  # terminal 2
  ```sh
 uv run rag.py --query "What happened in Rafah?"
 
- # Outputs:
+# Outputs:
 
 # According to Telegram posts from March 31, 2025, Rafah is experiencing a dire humanitarian crisis.
 
